@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CudaCompile Include="kernel.cu" />
+    <CudaCompile Include="profiler.cu" />
+    <CudaCompile Include="PandemicSim.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="LocationArray.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="LocationArray.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="PandemicSim.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="indirect.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="profiler.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="simParameters.h" />
+    <ClInclude Include="thrust_functors.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header files">
+      <UniqueIdentifier>{7fdfc2ff-786a-4e54-a037-6698d38a8851}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

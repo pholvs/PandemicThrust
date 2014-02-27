@@ -1,0 +1,7 @@
+PandemicThrust/Debug/
+PandemicThrust/Release/
+PandemicThrust/x64/
+Debug/
+Release/
+x64/
+*.sdf
