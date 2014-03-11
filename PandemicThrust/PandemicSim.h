@@ -78,6 +78,15 @@ public:
 	void validate_contacts(const char * contact_type, d_vec d_people, d_vec d_lookup, d_vec d_offsets, d_vec d_counts, int N);
 
 	void dailyUpdate();
+	void build_action_generations();
+	void contacts_to_action();
+	void dump_actions();
+	void filter_actions();
+	void do_infection_actions(int action);
+	int recover_infected();
+	void countReproduction(int action_type);
+	void dump_actions_filtered();
+	void rebuild_infected_arr();
 
 	void calculate_final_reproduction();
 
