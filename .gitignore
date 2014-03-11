@@ -5,3 +5,9 @@ Debug/
 Release/
 x64/
 *.sdf
+profile_function_log.csv
+profile_log.csv
+.gz
+debug.txt
+*.gz
+ipch/

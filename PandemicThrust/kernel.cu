@@ -4,8 +4,14 @@
 
 #include <stdio.h>
 
+#include "PandemicSim.h"
+
 int main()
 {
+	PandemicSim sim;
 
-    return 0;
+	sim.setupSim();
+	sim.runToCompletion();
+
+	return 0;
 }

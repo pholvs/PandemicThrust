@@ -1,12 +1,3 @@
-#include "PandemicSim.h"
-
-
-
-#include "threefry.h"
-
-#include "simParameters.h"
-#include "profiler.h"
-#include "thrust_functors.h"
 
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
@@ -37,6 +28,17 @@
 #include <cstdlib>
 #include <climits>
 #include <time.h>
+
+#include "threefry.h"
+
+#include "simParameters.h"
+#include "profiler.h"
+
+#include "PandemicSim.h"
+#include "thrust_functors.h"
+
+
+
 
 
 #pragma region settings
@@ -255,8 +257,6 @@ void PandemicSim::setupSim()
 	debug_print("beginning setup");
 
 
-	printf("%d people, %d households, %d workplaces\n",number_people, number_households, number_workplaces);
-
 
 	if(debug_log_function_calls)
 		debug_print("setting up households");
@@ -266,7 +266,9 @@ void PandemicSim::setupSim()
 
 	if(log_people_info)
 		dump_people_info();
-	
+
+	printf("%d people, %d households, %d workplaces\n",number_people, number_households, number_workplaces);
+
 	
 	//setup people status:
 	people_status_pandemic.resize(number_people);
@@ -2797,7 +2799,9 @@ void PandemicSim::countReproduction(int action)
 			r_pred);
 	}
 	else
+	{
 		throw;
+	}
 
 	int num_matching_actions = gens_end - pandemic_gens.begin();
 
