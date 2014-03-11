@@ -1,5 +1,9 @@
 #include "PandemicSim.h"
 
+
+
+#include "threefry.h"
+
 #include "simParameters.h"
 #include "profiler.h"
 #include "thrust_functors.h"
@@ -139,23 +143,6 @@ inline char * action_type_to_char(int action)
 	}
 }
 
-void profile_begin_function(int current_day, char * msg)
-{
-	throw;
-
-
-}
-void profile_begin_function(int current_day, const char * msg)
-{
-	throw;
-
-
-}
-
-void profile_end_function(int current_day, int size)
-{
-
-}
 
 int SEED_HOST[SEED_LENGTH];
 __device__ __constant__ int SEED_DEVICE[SEED_LENGTH];
@@ -1177,7 +1164,7 @@ void PandemicSim::doWeekend()
 void PandemicSim::doWeekendErrands()
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "doWeekendErrands");
+		profiler.beginFunction(current_day, "doWeekendErrands");
 
 	//each person gets 3 errands
 	int num_weekend_errands_total = NUM_WEEKEND_ERRANDS * number_people;
@@ -1259,10 +1246,10 @@ void PandemicSim::doWeekendErrands()
 	}
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_count);
+		profiler.endFunction(current_day, infected_count);
 }
 
-/*
+
 //copies ID numbers into array for weekend errands
 //we want three copies of each name, spaced out in collation style
 __global__ void copy_weekend_errand_indexes_kernel(int * id_array, int N)
@@ -1274,19 +1261,17 @@ __global__ void copy_weekend_errand_indexes_kernel(int * id_array, int N)
 		id_array[myPos + N] = myPos;
 		id_array[myPos + N + N] = myPos;
 	}
-}*/
+}
 
 //copies indexes 3 times into array, i.e. for IDS 1-3 produces array:
 // 1 2 3 1 2 3 1 2 3
 void PandemicSim::copy_weekend_errand_indexes(vec_t * index_arr)
 {
-	throw;
 	int * index_arr_ptr = thrust::raw_pointer_cast(index_arr->data());
-	//copy_weekend_errand_indexes_kernel<<<cuda_blocks, cuda_threads>>>(index_arr_ptr, number_people);
+	copy_weekend_errand_indexes_kernel<<<cuda_blocks, cuda_threads>>>(index_arr_ptr, number_people);
 }
 
 //gets three UNIQUE errand hours 
-/*
 __global__ void weekend_errand_hours_kernel(int * hours_array, int N, int rand_offset)
 {
 	threefry2x32_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
@@ -1326,20 +1311,19 @@ __global__ void weekend_errand_hours_kernel(int * hours_array, int N, int rand_o
 		hours_array[myPos + N] = second;
 		hours_array[myPos + N + N] = third;
 	}
-}*/
+}
 
 //gets 3 DIFFERENT errand hours for each person, collated order
 //i.e. 1 2 3 1 2 3 1 2 3
 void PandemicSim::get_weekend_errand_hours(vec_t * hours_array)
 {
-	throw;
 	int * loc_arr_ptr = thrust::raw_pointer_cast(hours_array->data());
-//	weekend_errand_hours_kernel<<<cuda_blocks, cuda_threads>>>(loc_arr_ptr, number_people, rand_offset);
+	weekend_errand_hours_kernel<<<cuda_blocks, cuda_threads>>>(loc_arr_ptr, number_people, rand_offset);
 	rand_offset += number_people * 2;
 }
 
 //gets three errand locations for each person in collation style
-/*__global__ void weekend_errand_locations_kernel(int * location_array, int N, int rand_offset)
+__global__ void weekend_errand_locations_kernel(int * location_array, int N, int rand_offset)
 {
 	threefry2x32_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
 	union{
@@ -1399,15 +1383,14 @@ void PandemicSim::get_weekend_errand_hours(vec_t * hours_array)
 		location_array[myPos + N + N] = third;
 
 	}
-}*/
+}
 
 //gets 3 errand locations for each person according to PDF with collated order
 //i.e. 1 2 3 1 2 3 1 2 3
 void PandemicSim::get_weekend_errand_locs(vec_t * location_array)
 {
-	throw;
 	int * loc_arr_ptr = thrust::raw_pointer_cast(location_array->data());
-//	weekend_errand_locations_kernel<<<cuda_blocks, cuda_threads>>>(loc_arr_ptr, number_people, rand_offset);
+	weekend_errand_locations_kernel<<<cuda_blocks, cuda_threads>>>(loc_arr_ptr, number_people, rand_offset);
 	rand_offset += number_people * 2;
 }
 
@@ -1436,7 +1419,7 @@ void dump_weekend_errands(d_vec people, d_vec hours, d_vec locations, int num_to
 void PandemicSim::make_contacts_WeekendErrand(const char * hour_string, vec_t * people, vec_t * locations, int offset, int count)
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "make_contacts_WeekendErrand");
+		profiler.beginFunction(current_day, "make_contacts_WeekendErrand");
 
 	//make_contacts needs both the raw table of people (sorted by location) and a list of infected people present
 
@@ -1601,7 +1584,7 @@ void PandemicSim::make_contacts_WeekendErrand(const char * hour_string, vec_t * 
 	}
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_present_count);
+		profiler.endFunction(current_day, infected_present_count);
 }
 
 //actually works for any array that has been pre-computed AND where all population is present (i.e. not errands)
@@ -1613,7 +1596,7 @@ void PandemicSim::make_weekday_contacts(const char * contact_type,
 {
 
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "make_weekday_contacts");
+		profiler.beginFunction(current_day, "make_weekday_contacts");
 
 
 	//get the locations of infected people
@@ -1652,7 +1635,7 @@ void PandemicSim::make_weekday_contacts(const char * contact_type,
 	}
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_count);
+		profiler.endFunction(current_day, infected_count);
 }
 //method to set up afterschool activities and errands and make contacts
 //children go to one randomly selected afterschool activity for 2 hours
@@ -1664,7 +1647,7 @@ void PandemicSim::doWeekdayErrands()
 
 
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "doWeekdayErrands");
+		profiler.beginFunction(current_day, "doWeekdayErrands");
 
 	//generate child afterschool activities
 	vec_t child_locs(number_children);
@@ -1843,11 +1826,11 @@ void PandemicSim::doWeekdayErrands()
 		debug_print("second errand validated");
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_count);
+		profiler.endFunction(current_day, infected_count);
 }
 
 //kernel gets a random afterschool location for each child
-/*__global__
+__global__
 	void get_afterschool_locations_kernel(int * location_array, int N, int rand_offset)
 {
 	threefry2x32_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
@@ -1873,22 +1856,21 @@ void PandemicSim::doWeekdayErrands()
 
 		location_array[myPos] = ret + afterschool_offset; //add the offset into the location array
 	}
-}*/
+}
 
 //starts the kernel that gets a random afterschool location for each child.
 void PandemicSim::get_afterschool_locations(vec_t * child_locs)
 {
-	throw;
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "get_afterschool_locations");
+		profiler.beginFunction(current_day, "get_afterschool_locations");
 
 	int * arr_ptr = thrust::raw_pointer_cast(child_locs->data());
-	//get_afterschool_locations_kernel<<<cuda_blocks, cuda_threads>>>(arr_ptr, number_children, rand_offset);
+	get_afterschool_locations_kernel<<<cuda_blocks, cuda_threads>>>(arr_ptr, number_children, rand_offset);
 	cudaDeviceSynchronize();
 	rand_offset += number_children;
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, number_children);
+		profiler.endFunction(current_day, number_children);
 }
 
 //Given a vector of child locations, generate adult locations
@@ -1902,7 +1884,7 @@ void PandemicSim::build_weekday_errand_locations(
 	//	NOTE:  array will initially be set up with adults in the front, and children in the back
 
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "build_weekday_errand_locations");
+		profiler.beginFunction(current_day, "build_weekday_errand_locations");
 
 	//get locations for adults and copy in their indexes
 	get_weekday_errand_locations(errand_people_lookup);		//copy to FRONT
@@ -1935,12 +1917,12 @@ void PandemicSim::build_weekday_errand_locations(
 		errand_people_lookup->begin());
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, number_people);
+		profiler.endFunction(current_day, number_people);
 }
 
 
 //gets a random weekday errand location for each adult, where N = number_adults
-/*__global__ void get_weekday_errand_locations_kernel(int * locations_arr, int N, int global_rand_offset)
+__global__ void get_weekday_errand_locations_kernel(int * locations_arr, int N, int global_rand_offset)
 {
 
 	threefry2x32_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
@@ -1978,31 +1960,30 @@ void PandemicSim::build_weekday_errand_locations(
 
 		//TODO:  use other rand number
 	}
-}*/
+}
 
 //gets a random weekday errand location for each adult
 void PandemicSim::get_weekday_errand_locations(d_vec * locations_array)
 {
-	throw;
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "get_weekday_errand_locations");
+		profiler.beginFunction(current_day, "get_weekday_errand_locations");
 
 	int * locations_array_ptr = thrust::raw_pointer_cast((*locations_array).data());
 
 	//start kernel
-//	get_weekday_errand_locations_kernel<<<cuda_blocks, cuda_threads>>>(locations_array_ptr, number_adults, rand_offset);
+	get_weekday_errand_locations_kernel<<<cuda_blocks, cuda_threads>>>(locations_array_ptr, number_adults, rand_offset);
 	cudaDeviceSynchronize(); //need to sync to be sure child locations are finished
 
 	rand_offset += number_adults;
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, number_adults);
+		profiler.endFunction(current_day, number_adults);
 }
 
 
 //for each infected adult, get the number of contacts they will make at their first errand
 //valid outputs are {0,1,2}
-/*__global__ void errand_contacts_kernel(int * array, int N, int global_rand_offset)
+__global__ void errand_contacts_kernel(int * array, int N, int global_rand_offset)
 {		
 	threefry2x32_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
 	union{
@@ -2023,26 +2004,25 @@ void PandemicSim::get_weekday_errand_locations(d_vec * locations_array)
 
 		//TODO:  use other rand number
 	}
-}*/
+}
 
 //for each infected adult, get the number of contacts they will make at their first errand
 //valid outputs are {0,1,2}
 void PandemicSim::assign_weekday_errand_contacts(d_vec * contacts_desired, int num_infected_adults)
 {
-	throw;
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "assign_weekday_errand_contacts");
+		profiler.beginFunction(current_day, "assign_weekday_errand_contacts");
 
 	int * arr_ptr = thrust::raw_pointer_cast(contacts_desired->data());
 
 	//start kernel
-//	errand_contacts_kernel<<<cuda_blocks, cuda_threads>>>(arr_ptr, num_infected_adults, rand_offset);
+	errand_contacts_kernel<<<cuda_blocks, cuda_threads>>>(arr_ptr, num_infected_adults, rand_offset);
 	cudaDeviceSynchronize();
 
 	rand_offset += num_infected_adults;
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, num_infected_adults);
+		profiler.endFunction(current_day, num_infected_adults);
 }
 
 
@@ -2053,7 +2033,7 @@ void PandemicSim::build_contacts_desired(
 	vec_t *contacts_desired)
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "build_contacts_desired");
+		profiler.beginFunction(current_day, "build_contacts_desired");
 
 	thrust::gather(
 		infected_locations.begin(),		//gather location count to desired
@@ -2075,7 +2055,7 @@ void PandemicSim::build_contacts_desired(
 
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_locations.end() - infected_locations.begin());
+		profiler.endFunction(current_day, infected_locations.end() - infected_locations.begin());
 }
 
 //prints some of the weekend errands to console
@@ -2099,7 +2079,7 @@ void PandemicSim::dump_weekend_errands(d_vec people, d_vec hours, d_vec location
 //Randomly select people at the same location as the infector as contacts
 //NOTE: assumes that a location count of 1 means that contacts_desired = 0 
 //		for anyone at that location otherwise, someone could select themselves
-/*__global__ void victim_index_kernel(
+__global__ void victim_index_kernel(
 	int * infector_indexes_arr, int * contacts_desired_arr, int * output_offset_arr, int * infector_loc_arr,
 	int * location_offsets_arr, int * location_counts_arr, int * location_people_arr,
 	int * contact_infector_arr, int * contact_idx_arr,
@@ -2175,7 +2155,7 @@ void PandemicSim::dump_weekend_errands(d_vec people, d_vec hours, d_vec location
 
 		}  //end while(contacts_desired)
 	}	//end for each infector
-}*/
+}
 
 
 
@@ -2186,9 +2166,8 @@ void PandemicSim::make_contacts(
 	vec_t infected_locations, vec_t infected_contacts_desired,
 	int * loc_people_ptr, vec_t location_offsets, vec_t location_counts, int num_locs)
 {
-	throw;
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "make_contacts");
+		profiler.beginFunction(current_day, "make_contacts");
 
 	if(debug_log_function_calls)
 		debug_print("inside make_contacts");
@@ -2252,11 +2231,11 @@ void PandemicSim::make_contacts(
 	//call the kernel
 	if(debug_log_function_calls)
 		debug_print("calling contacts kernel");
-//	victim_index_kernel<<<cuda_blocks, cuda_threads>>>(
-//		infected_idx_ptr, infected_contacts_ptr, output_offsets_ptr, infected_loc_ptr,
-//		loc_offsets_ptr, loc_counts_ptr, loc_people_ptr,
-//		contact_infector_ptr, contact_victim_ptr,
-//		infected_present, rand_offset);
+	victim_index_kernel<<<cuda_blocks, cuda_threads>>>(
+		infected_idx_ptr, infected_contacts_ptr, output_offsets_ptr, infected_loc_ptr,
+		loc_offsets_ptr, loc_counts_ptr, loc_people_ptr,
+		contact_infector_ptr, contact_victim_ptr,
+		infected_present, rand_offset);
 	cudaDeviceSynchronize();
 
 	if(debug_log_function_calls)
@@ -2267,13 +2246,13 @@ void PandemicSim::make_contacts(
 	daily_contacts += new_contacts;
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_present); 
+		profiler.endFunction(current_day, infected_present); 
 }
 
 void PandemicSim::make_contacts_where_present(const char * hour_string, vec_t population_group, vec_t errand_people_lookup, vec_t errand_location_people, vec_t errand_location_offsets, vec_t errand_location_counts)
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, hour_string);
+		profiler.beginFunction(current_day, hour_string);
 
 	//get set of children present
 	vec_t infected_present(infected_count);
@@ -2322,7 +2301,7 @@ void PandemicSim::make_contacts_where_present(const char * hour_string, vec_t po
 	}
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_present_count);
+		profiler.endFunction(current_day, infected_present_count);
 }
 
 //This method checks that the N contacts most recently generated are valid
@@ -2332,7 +2311,7 @@ void PandemicSim::make_contacts_where_present(const char * hour_string, vec_t po
 void PandemicSim::validate_contacts(const char * contact_type, d_vec d_people, d_vec d_lookup, d_vec d_offsets, d_vec d_counts, int N)
 {	
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "validate_contacts");
+		profiler.beginFunction(current_day, "validate_contacts");
 	if(debug_log_function_calls)
 		debug_print("validating contacts");
 
@@ -2415,7 +2394,7 @@ void PandemicSim::validate_contacts(const char * contact_type, d_vec d_people, d
 	fflush(fDebug);
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, N);
+		profiler.endFunction(current_day, N);
 }
 
 
@@ -2423,7 +2402,7 @@ void PandemicSim::validate_contacts(const char * contact_type, d_vec d_people, d
 void PandemicSim::dailyUpdate()
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "dailyUpdate");
+		profiler.beginFunction(current_day, "dailyUpdate");
 
 	if(debug_log_function_calls)
 		debug_print("beginning daily update");
@@ -2466,14 +2445,14 @@ void PandemicSim::dailyUpdate()
 		debug_print("daily update complete");
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_count);
+		profiler.endFunction(current_day, infected_count);
 }
 
 //after the contacts have been converted to actions, build an array of generations for the victims
 void PandemicSim::build_action_generations()
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "build_action_generations");
+		profiler.beginFunction(current_day, "build_action_generations");
 
 	if(debug_log_function_calls)
 		debug_print("building generations for actions");
@@ -2511,13 +2490,13 @@ void PandemicSim::build_action_generations()
 		debug_print("generation actions built");
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, daily_actions);
+		profiler.endFunction(current_day, daily_actions);
 
 }
 
 //once the contacts have been properly set up, this kernel determines whether each contact
 //is successful, and then outputs actions
-/*__global__ void contacts_to_actions_kernel(
+__global__ void contacts_to_actions_kernel(
 		int * contacts_desired_arr, int * output_offset_arr,
 		int * day_p_arr, int * day_s_arr,
 		int * action_types_arr,  // float * rand_1, float * rand_2, float* rand_3, float * rand_4,
@@ -2606,14 +2585,13 @@ void PandemicSim::build_action_generations()
 			}
 		}
 	}
-}*/
+}
 
 //starts the kernel to convert contacts to actions
 void PandemicSim::contacts_to_action()
 {
-	throw;
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "contacts_to_actions");
+		profiler.beginFunction(current_day, "contacts_to_actions");
 	
 	if(debug_log_function_calls)
 		debug_print("beginning contacts-to-action setup");
@@ -2687,11 +2665,11 @@ void PandemicSim::contacts_to_action()
 		debug_print("calling contacts-to-action kernel");
 	
 	//determine whether each infection was successful
-//	contacts_to_actions_kernel<<<cuda_blocks, cuda_threads>>>(
-//			inf_count_ptr, inf_offset_ptr,
-//			day_p_ptr, day_s_ptr,
-//			actions_type_ptr, // rand1ptr, rand2ptr, rand3ptr, rand4ptr,
-//			infected_count, rand_offset, current_day);
+	contacts_to_actions_kernel<<<cuda_blocks, cuda_threads>>>(
+			inf_count_ptr, inf_offset_ptr,
+			day_p_ptr, day_s_ptr,
+			actions_type_ptr, // rand1ptr, rand2ptr, rand3ptr, rand4ptr,
+			infected_count, rand_offset, current_day);
 
 	//copy the IDs of the infector and victim to the action array
 	thrust::copy(daily_contact_infectors.begin(), daily_contact_infectors.begin() + daily_contacts, daily_action_infectors.begin());
@@ -2727,14 +2705,14 @@ void PandemicSim::contacts_to_action()
 	if(debug_log_function_calls)
 		debug_print("contacts_to_actions complete");
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_count);
+		profiler.endFunction(current_day, infected_count);
 }
 
 //after the contacts_to_actions kernel runs, we need to filter out actions that are invalid and then remove no-ops
 void PandemicSim::filter_actions()
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "filter_actions");
+		profiler.beginFunction(current_day, "filter_actions");
 
 	if(debug_log_function_calls)
 		debug_print("filtering contacts");
@@ -2777,7 +2755,7 @@ void PandemicSim::filter_actions()
 	if(debug_log_function_calls)
 		debug_print("contact filtering complete");
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, daily_action_type.end() - daily_action_type.begin());
+		profiler.endFunction(current_day, daily_action_type.end() - daily_action_type.begin());
 }
 
 
@@ -2785,7 +2763,7 @@ void PandemicSim::filter_actions()
 void PandemicSim::countReproduction(int action)
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "count_reproduction");
+		profiler.beginFunction(current_day, "count_reproduction");
 
 	if(debug_log_function_calls)
 		debug_print("counting reproduction");
@@ -2886,7 +2864,7 @@ void PandemicSim::countReproduction(int action)
 	if(debug_log_function_calls)
 		debug_print("reproduction updated");
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, daily_actions);
+		profiler.endFunction(current_day, daily_actions);
 }
 
 //this will dump all actions (unfiltered) to disk, which allows immediate debugging of the contacts_to_actions kernel
@@ -3001,7 +2979,7 @@ void PandemicSim::dump_actions_filtered()
 void PandemicSim::rebuild_infected_arr()
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "rebuild_infected_arr");
+		profiler.beginFunction(current_day, "rebuild_infected_arr");
 
 	if(debug_log_function_calls)
 		debug_print("rebuilding infected array");
@@ -3073,7 +3051,7 @@ void PandemicSim::rebuild_infected_arr()
 		debug_print("infected array rebuilt");
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_count);
+		profiler.endFunction(current_day, infected_count);
 }
 
 
@@ -3083,7 +3061,7 @@ void PandemicSim::rebuild_infected_arr()
 void PandemicSim::do_infection_actions(int action)
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "do_infection_actions");
+		profiler.beginFunction(current_day, "do_infection_actions");
 
 	if(debug_log_function_calls)
 		debug_print("processing infection actions");
@@ -3154,7 +3132,7 @@ void PandemicSim::do_infection_actions(int action)
 		debug_print("infection actions processed");
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, daily_actions);
+		profiler.endFunction(current_day, daily_actions);
 }
 
 
@@ -3163,7 +3141,7 @@ void PandemicSim::do_infection_actions(int action)
 int PandemicSim::recover_infected()
 {
 	if(PROFILE_SIMULATION)
-		profile_begin_function(current_day, "recover_infected");
+		profiler.beginFunction(current_day, "recover_infected");
 
 	if(debug_log_function_calls)
 		debug_print("beginning recover_infected");
@@ -3220,7 +3198,7 @@ int PandemicSim::recover_infected()
 		debug_print("infected recovery complete");
 
 	if(PROFILE_SIMULATION)
-		profile_end_function(current_day, infected_count);
+		profiler.endFunction(current_day, infected_count);
 
 	return infected_remaining;
 }
