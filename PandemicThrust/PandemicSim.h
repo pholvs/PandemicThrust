@@ -51,9 +51,31 @@ public:
 
 	void doWeekday();
 	void make_weekday_contacts(const char *, vec_t, vec_t, vec_t, vec_t, vec_t, int);
+	void get_afterschool_locations(vec_t * child_locs);
+	void build_weekday_errand_locations(
+		vec_t child_locs,
+		vec_t * errand_people_lookup,
+		vec_t * errand_location_people,
+		vec_t * errand_location_offsets, vec_t * errand_location_counts);
+	void make_contacts_where_present(const char * hour_string, vec_t population_group, vec_t errand_people_lookup, vec_t errand_location_people, vec_t errand_location_offsets, vec_t errand_location_counts);
+	void assign_weekday_errand_contacts(d_vec * contacts_desired, int num_infected_adults);
 	void doWeekdayErrands();
+	void get_weekday_errand_locations(d_vec * locations_array);
+
 	void doWeekend();
 	void doWeekendErrands();
+	void copy_weekend_errand_indexes(vec_t * errand_people);
+	void get_weekend_errand_hours(vec_t * errand_hours);
+	void get_weekend_errand_locs(vec_t * errand_locations);
+	void dump_weekend_errands(vec_t errand_people, vec_t errand_hours, vec_t errand_locations, int num_to_print, int num_people);
+	void make_contacts_WeekendErrand(const char * hour_string, vec_t * errand_people, vec_t *errand_locations, int offset, int count);
+
+	void build_contacts_desired(vec_t infected_locations, IntIterator loc_counts_begin, IntIterator loc_max_contacts_begin, vec_t *contacts_desired);
+	void make_contacts(
+		vec_t infected_indexes_present, int infected_present,
+		vec_t infected_locations, vec_t infected_contacts_desired,
+		int * loc_people_ptr, vec_t location_offsets, vec_t location_counts, int num_locs);
+	void validate_contacts(const char * contact_type, d_vec d_people, d_vec d_lookup, d_vec d_offsets, d_vec d_counts, int N);
 
 	void dailyUpdate();
 

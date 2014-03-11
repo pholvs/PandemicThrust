@@ -1,3 +1,5 @@
+#pragma once
+
 
 #define ACTION_INFECT_NONE 0
 #define ACTION_INFECT_SEASONAL 1
@@ -12,3 +14,6 @@
 #define DAY_NOT_INFECTED -1
 #define GENERATION_NOT_INFECTED -1
 #define INITIAL_DAY 0
+
+const int NUM_WEEKEND_ERRANDS = 3;
+const int NUM_WEEKEND_ERRAND_HOURS = 10;
