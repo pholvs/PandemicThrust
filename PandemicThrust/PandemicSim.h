@@ -27,6 +27,7 @@ public:
 	int current_day;
 
 	void setupSim();
+	void setup_configureLogging();
 	void setup_loadParameters();
 	void setup_generateHouseholds();
 	int setup_assignWorkplace();

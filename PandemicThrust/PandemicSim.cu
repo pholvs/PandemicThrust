@@ -54,18 +54,18 @@
 #define CONSOLE_OUTPUT 0
 
 //controls master logging - everything except for profiler
-#define GLOBAL_LOGGING 1
+#define GLOBAL_LOGGING 0
 #define SANITY_CHECK 1
 
 #define print_infected_info 0
 #define log_infected_info GLOBAL_LOGGING
 
 #define print_location_info 0
-#define log_location_info 0
+#define log_location_info GLOBAL_LOGGING
 
 #define print_contact_kernel_setup 0
 #define print_contacts 0
-#define log_contacts 0
+#define log_contacts GLOBAL_LOGGING
 #define DOUBLECHECK_CONTACTS 0
 
 #define print_actions 0
@@ -3273,6 +3273,11 @@ void PandemicSim::test_locs()
 		}
 		printf("%4d:\tID: %d\tHH: %4d\tWP: %4d\tHH_contains: %4d\tWP_contains: %4d\n",i,idx,hh,wp, hh_contains, wp_contains);
 	}
+}
+
+void PandemicSim::setup_configureLogging()
+{
+
 }
 
 
