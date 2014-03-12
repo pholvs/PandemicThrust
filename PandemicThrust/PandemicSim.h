@@ -27,14 +27,13 @@ public:
 	int current_day;
 
 	void setupSim();
-	void open_debug_streams();
-	void setupLoadParameters();
-	void setupHouseholdsNew();
-	int setupAssignWorkplace();
-	int setupAssignSchool();
-	void setupDeviceData();
-	void setupInitialInfected();
-	void setupFixedLocations();
+	void setup_loadParameters();
+	void setup_generateHouseholds();
+	int setup_assignWorkplace();
+	int setup_assignSchool();
+	void setup_deviceData();
+	void setup_initialInfected();
+	void setup_buildFixedLocations();
 
 	void calcLocationOffsets(vec_t * location_people, vec_t * stencil,	vec_t * location_offsets,	vec_t * location_counts, int num_people, int num_locs);
 
@@ -47,7 +46,8 @@ public:
 	void dump_infected_info();
 	void test_locs();
 
-	void close_output_streams();
+	void logging_openOutputStreams();
+	void logging_closeOutputStreams();
 
 	void doWeekday();
 	void make_weekday_contacts(const char *, vec_t, vec_t, vec_t, vec_t, vec_t, int);
@@ -71,6 +71,12 @@ public:
 	void make_contacts_WeekendErrand(const char * hour_string, vec_t * errand_people, vec_t *errand_locations, int offset, int count);
 
 	void build_contacts_desired(vec_t infected_locations, IntIterator loc_counts_begin, IntIterator loc_max_contacts_begin, vec_t *contacts_desired);
+	void dump_contact_kernel_setup(
+		d_vec infected_indexes_present, d_vec infected_locations,
+		d_vec infected_contacts_desired, d_vec output_offsets, 
+		int * location_people_ptr, d_vec location_offsets, d_vec location_counts,
+		int N
+		);
 	void make_contacts(
 		vec_t infected_indexes_present, int infected_present,
 		vec_t infected_locations, vec_t infected_contacts_desired,
@@ -78,17 +84,17 @@ public:
 	void validate_contacts(const char * contact_type, d_vec d_people, d_vec d_lookup, d_vec d_offsets, d_vec d_counts, int N);
 
 	void dailyUpdate();
-	void build_action_generations();
-	void contacts_to_action();
+	void daily_assignVictimGenerations();
+	void daily_contactsToActions();
 	void dump_actions();
-	void filter_actions();
+	void daily_filterActions();
 	void do_infection_actions(int action);
-	int recover_infected();
-	void countReproduction(int action_type);
+	int daily_recoverInfected();
+	void daily_countReproductionNumbers(int action_type);
 	void dump_actions_filtered();
-	void rebuild_infected_arr();
+	void daily_rebuildInfectedArray();
 
-	void calculate_final_reproduction();
+	void calculateFinalReproduction();
 
 	int number_people;
 	int number_households;
@@ -136,7 +142,7 @@ public:
 	vec_t generation_pandemic;
 	vec_t generation_seasonal;
 
-	FILE *fInfected, *fLocationInfo, *fContacts, *fActions, *fActionsFiltered, *fWeekendLocations;
+	FILE *fInfected, *fLocationInfo, *fContacts, *fActions, *fActionsFiltered;
 
 
 
@@ -152,5 +158,17 @@ public:
 	vec_t household_max_contacts;
 };
 
-#define is_weekend() (current_day % 7 < 5 ? 0 : 1)
+#define day_of_week() (current_day % 7)
+#define is_weekend() (day_of_week() < 5 ? 0 : 1)
 
+void n_unique_numbers(h_vec * array, int n, int max);
+inline char * action_type_to_char(int action);
+inline char status_int_to_char(int s);
+inline void debug_print(char * message);
+inline void debug_assert(bool condition, char * message);
+inline void debug_assert(char *message, int expected, int actual);
+inline void debug_assert(bool condition, char * message, int idx);
+
+
+struct weekend_getter;
+__global__ void weekend_errand_hours_kernel(int * hours_array, int N, int rand_offset);

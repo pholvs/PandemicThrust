@@ -11,3 +11,4 @@ profile_log.csv
 debug.txt
 *.gz
 ipch/
+output_rn.csv
