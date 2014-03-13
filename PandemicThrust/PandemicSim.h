@@ -36,7 +36,7 @@ public:
 	void setup_initialInfected();
 	void setup_buildFixedLocations();
 
-	void calcLocationOffsets(vec_t * location_people, vec_t * stencil,	vec_t * location_offsets,	vec_t * location_counts, int num_people, int num_locs);
+	void calcLocationOffsets(vec_t * ids_to_sort,vec_t lookup_table_copy,	vec_t * location_offsets,int num_people, int num_locs);
 
 	CudaProfiler profiler;
 
@@ -51,17 +51,29 @@ public:
 	void logging_closeOutputStreams();
 
 	void doWeekday();
-	void make_weekday_contacts(const char *, vec_t, vec_t, vec_t, vec_t, vec_t, int);
-	void get_afterschool_locations(vec_t * child_locs);
+	void makeContacts_byLocationMax(const char * contact_type,
+		vec_t *infected_list, int infected_list_count,
+		vec_t *loc_people, vec_t *loc_max_contacts,
+		vec_t *loc_offsets, int num_locs,
+		vec_t *people_lookup);
+
+	void makeContacts_byContactsDesiredArray(const char * hour_string,
+		vec_t *infected_list, int infected_list_count,
+		vec_t *loc_people, vec_t * contacts_desired,
+		vec_t * loc_offsets, int num_locs, 
+		vec_t * people_lookup);
+
+	void weekday_scatterAfterschoolLocations(vec_t * child_locs);
 	void build_weekday_errand_locations(
-		vec_t child_locs,
 		vec_t * errand_people_lookup,
 		vec_t * errand_location_people,
-		vec_t * errand_location_offsets, vec_t * errand_location_counts);
-	void make_contacts_where_present(const char * hour_string, vec_t population_group, vec_t errand_people_lookup, vec_t errand_location_people, vec_t errand_location_offsets, vec_t errand_location_counts);
+		vec_t * errand_location_offsets);
+
+	void filterInfectedByPopulationGroup(const char * hour_string, vec_t * population_group, vec_t * infected_present);
+//	void makeContacts_byPopulationGroup(const char * hour_string, vec_t infected_list, int infected_list_count, vec_t population_group, vec_t errand_people_lookup, vec_t errand_location_people, vec_t errand_location_offsets);
 	void assign_weekday_errand_contacts(d_vec * contacts_desired, int num_infected_adults);
 	void doWeekdayErrands();
-	void get_weekday_errand_locations(d_vec * locations_array);
+	void weekday_scatterErrandLocations(d_vec * locations_array);
 
 	void doWeekend();
 	void doWeekendErrands();
@@ -71,18 +83,27 @@ public:
 	void dump_weekend_errands(vec_t errand_people, vec_t errand_hours, vec_t errand_locations, int num_to_print, int num_people);
 	void make_contacts_WeekendErrand(const char * hour_string, vec_t * errand_people, vec_t *errand_locations, int offset, int count);
 
-	void build_contacts_desired(vec_t infected_locations, IntIterator loc_counts_begin, IntIterator loc_max_contacts_begin, vec_t *contacts_desired);
+	void buildContactsDesired_byLocationMax(
+		vec_t *infected_locations, int num_infected,
+		vec_t *loc_offsets, vec_t *loc_max_contacts,
+		vec_t *contacts_desired);
+
+	void clipContactsDesired_byLocationCount(
+		vec_t *infected_locations, int num_infected,
+		vec_t *loc_offsets,
+		vec_t *contacts_desired);
+
 	void dump_contact_kernel_setup(
-		d_vec infected_indexes_present, d_vec infected_locations,
-		d_vec infected_contacts_desired, d_vec output_offsets, 
-		int * location_people_ptr, d_vec location_offsets, d_vec location_counts,
+		d_vec *infected_indexes_present, d_vec *infected_locations,
+		d_vec *infected_contacts_desired, d_vec *output_offsets, 
+		int * location_people_ptr, d_vec *location_offsets,
 		int N
 		);
-	void make_contacts(
-		vec_t infected_indexes_present, int infected_present,
-		vec_t infected_locations, vec_t infected_contacts_desired,
-		int * loc_people_ptr, vec_t location_offsets, vec_t location_counts, int num_locs);
-	void validate_contacts(const char * contact_type, d_vec d_people, d_vec d_lookup, d_vec d_offsets, d_vec d_counts, int N);
+	void launchContactsKernel(
+		vec_t *infected_indexes_present, int infected_present,
+		vec_t *infected_locations, vec_t *infected_contacts_desired,
+		int * loc_people_ptr, vec_t *location_offsets, int num_locs);
+	void validate_contacts(const char * contact_type, d_vec *d_people, d_vec *d_lookup, d_vec *d_offsets, int N);
 
 	void dailyUpdate();
 	void daily_assignVictimGenerations();

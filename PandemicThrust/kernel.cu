@@ -6,6 +6,8 @@
 
 #include "PandemicSim.h"
 
+#include "indirect.h"
+
 int main()
 {
 	PandemicSim sim;

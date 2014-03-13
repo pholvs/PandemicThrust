@@ -2,6 +2,9 @@
 
 #include "profiler.h"
 
+#include <stdio.h>
+#include <string>
+
 //call once to initialize the
 void CudaProfiler::initStack()
 {
@@ -101,4 +104,12 @@ void CudaProfiler::dailyFlush()
 		printf("ERROR: too many profile_end_function calls somewhere\n");
 		exit(1);
 	}
+}
+
+const char * CudaProfiler::getCurrentFuncName()
+{
+	if(stack_depth >= 0 && stack_depth < MAX_STACK_DEPTH)
+		return profile_functionName[stack_depth];
+	else 
+		throw std::runtime_error(std::string("No function on stack"));
 }

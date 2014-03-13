@@ -16,6 +16,7 @@ public:
 	void endFunction(int current_day, int problem_size);
 	void dailyFlush();
 	void done();
+	const char * getCurrentFuncName();
 
 private:
 
