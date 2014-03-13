@@ -1870,7 +1870,7 @@ void PandemicSim::assign_weekday_errand_contacts(d_vec * contacts_desired, int n
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day, "assign_weekday_errand_contacts");
 
-	int * arr_ptr = thrust::raw_pointer_cast(contacts_desired->data());
+	int * arr_ptr = thrust::raw_pointer_cast((*contacts_desired)->data());
 
 	//start kernel
 	errand_contacts_kernel<<<cuda_blocks, cuda_threads>>>(arr_ptr, num_infected_adults, rand_offset);
