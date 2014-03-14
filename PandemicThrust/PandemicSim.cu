@@ -1137,6 +1137,7 @@ void PandemicSim::doWeekend()
 //generates contacts for the 6 errand hours on a weekend
 void PandemicSim::doWeekendErrands()
 {
+	
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day, "doWeekendErrands");
 
@@ -1182,10 +1183,12 @@ void PandemicSim::doWeekendErrands()
 	thrust::lower_bound(
 		errand_hours.begin(),		//data.first
 		errand_hours.end(),			//data.last
-		thrust::counting_iterator<int>(0),		//search val first
-		thrust::counting_iterator<int>(NUM_WEEKEND_ERRAND_HOURS), //search val last
+		thrust::counting_iterator<int>(0),		//search_val.first
+		thrust::counting_iterator<int>(NUM_WEEKEND_ERRAND_HOURS), //search_val.last
 		errand_people_hour_offsets.begin());
 	errand_people_hour_offsets[NUM_WEEKEND_ERRAND_HOURS] = num_weekend_errands_total;
+
+
 
 	if(print_location_info || log_location_info){
 		printf("dumping weekend errand setup...\n");
@@ -1211,8 +1214,37 @@ void PandemicSim::doWeekendErrands()
 		int people_offset = errand_people_hour_offsets[hour];		//index of first person for this hour
 		int people_count = errand_people_hour_offsets[hour+1] - errand_people_hour_offsets[hour];		//number of people out on an errand this hour
 
-		launchContactsKernel();
+		int infected_offset = infected_hour_offsets[hour];		//offset into infected_present of first infected person making contacts this hour
+		int infected_present_count = infected_hour_offsets[hour+1] - infected_offset;	//number of infected making contacts this hour
 
+		//build location offset table
+		vec_t location_offsets(number_workplaces + 1);
+		thrust::counting_iterator<int> count_iterator(0);
+		thrust::lower_bound(
+			errand_locations.begin() + people_offset,
+			errand_locations.begin() + people_offset + people_count,
+			count_iterator,
+			count_iterator + number_workplaces,
+			location_offsets.begin());
+		location_offsets[number_workplaces] = people_count;
+
+		clipContactsDesired_byLocationCount(
+			infected_destinations.begin() + infected_offset,		//infected locations for this hour
+			infected_count, &location_offsets,	//number of infected and the location offset table
+			infected_contacts_desired.begin() + infected_offset);
+
+
+		launchContactsKernel(
+			str.c_str(),
+			infected_present_indexes.begin() + infected_offset,		//iterator to first infected index
+			infected_destinations.begin() + infected_offset,		//iterator to first infected destination
+			infected_contacts_desired.begin() + infected_offset,	//iterator to first infected contacts_desired
+			infected_present_count,									//number of infected present
+			thrust::raw_pointer_cast(errand_people.begin() + people_offset),	//pointer to first person in the location_people table
+			&location_offsets,		//pointer to location offset table
+			number_workplaces);		//number_locations
+
+//		TODO: validate contacts
 
 		if(debug_log_function_calls)
 			debug_print("errand hour complete");
@@ -1380,89 +1412,6 @@ void PandemicSim::dump_weekend_errands(d_vec people, d_vec hours, d_vec location
 	}
 }
 
-
-//For making weekend contacts
-//We are given a large array containing all errands for the day
-//We want to make contacts for all infected people between indexes [offset] and [offset+count]
-//The array has not been preprocessed at all except for sorting by the hour of the errand
-void PandemicSim::make_contacts_WeekendErrand(const char * hour_string, vec_t * people, vec_t * locations, int offset, int count)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "make_contacts_WeekendErrand");
-
-...
-
-	if(CONSOLE_OUTPUT)
-	{
-		printf("weekend errand: %d infected present\n", infected_present_count);
-	}
-
-
-	if(1)
-	{
-		fprintf(fDebug, "weekend errand: %d infected present\n", infected_present_count);
-		fflush(fDebug);
-	}
-
-	//technically does nothing, but provides a sanity check for make_contacts
-	infected_present.resize(infected_present_count);
-
-
-	//how many contacts we make in total this hour
-	int new_contacts_count = thrust::reduce(contacts_desired.begin(), contacts_desired.end());
-
-	if(debug_log_function_calls)
-		debug_print("test-4");
-
-	//get a pointer to the people at the first location
-	int * loc_people_ptr = thrust::raw_pointer_cast(people->data());	//ptr to first element
-	loc_people_ptr += offset;						//offset the pointer into the array
-
-	//make contacts
-	launchContactsKernel(
-		infected_present, infected_locations,
-		contacts_desired, infected_present_count,
-		loc_people_ptr, location_offsets, number_workplaces);
-
-
-	if(log_contacts || print_contacts)
-	{
-		d_vec val_loc_people(count);
-		thrust::copy(
-			people->begin() + offset,
-			people->begin() + (offset + count),
-			val_loc_people.begin());
-
-		d_vec big_lookup(number_people);
-		thrust::fill(big_lookup.begin(), big_lookup.end(), -1);
-		thrust::scatter(
-			people_lookup_locations.begin(),
-			people_lookup_locations.end(),
-			people_lookup_indexes.begin(),
-			big_lookup.begin());
-
-		h_vec h_lookup = big_lookup;
-		h_vec h_inf = infected_present;
-		h_vec h_inf_loc = infected_locations;
-		h_vec h_c_i = daily_contact_infectors;
-		h_vec h_c_v = daily_contact_victims;
-
-		for(int i = 0; i < 5; i++)
-		{
-			printf("%d:\t T6d\tvic: %6d\n", i, h_c_i[i], h_c_v[i]);
-		}
-		if(print_contacts || log_contacts)
-			validate_contacts(
-			hour_string,
-			val_loc_people, big_lookup,
-			location_offsets,
-			new_contacts_count);
-	}
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_present_count);
-}
-
 //helper function that will automatically generate a list of contacts_desired
 //uses the max_contacts number for each location
 void PandemicSim::makeContacts_byLocationMax(const char * hour_string,
@@ -1499,6 +1448,7 @@ void PandemicSim::makeContacts_byLocationMax(const char * hour_string,
 
 	//make contacts
 	launchContactsKernel(
+		hour_string,
 		infected_list, &infected_locations, 
 		&contacts_desired, infected_list_count,
 		location_people_ptr, loc_offsets, num_locs);
@@ -1655,48 +1605,6 @@ void PandemicSim::weekday_scatterAfterschoolLocations(vec_t * people_locs)
 		profiler.endFunction(current_day, number_children);
 }
 
-//Given a vector of child locations, generate adult locations
-// 		and set up the count/offset arrays
-void PandemicSim::build_weekday_errand_locations(
-	vec_t * errand_people_lookup,
-	vec_t * errand_location_people,
-	vec_t * errand_location_offsets)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "build_weekday_errand_locations");
-
-	//get locations for adults and copy in their indexes
-	thrust::copy(people_adult_indexes.begin(), people_adult_indexes.end(), errand_location_people->begin());
-
-	//copy in afterschool locations and indexes for children
-	//note that these don't change between errand hours so they are generated outside the program
-	thrust::copy(child_locs.begin(), child_locs.end(), errand_people_lookup->begin() + number_adults);	//copy into END
-	thrust::copy(people_child_indexes.begin(), people_child_indexes.end(), errand_location_people->begin() + number_adults);
-
-	//copy the arrays to produce the location arrays
-	vec_t sorting_stencil(number_people);
-	thrust::copy(errand_people_lookup->begin(), errand_people_lookup->end(), sorting_stencil.begin());
-
-	vec_t seq(number_people);
-	thrust::copy(errand_location_people->begin(), errand_location_people->end(), seq.begin());
-
-	//sort the sorting stencil and location table, and use it to get offset and counts
-	calcLocationOffsets(
-		errand_location_people,
-		&sorting_stencil,
-		errand_location_offsets,
-		number_people, number_workplaces);
-
-	//sort by person ID to produce the lookup table
-	thrust::sort_by_key(
-		seq.begin(),
-		seq.end(),
-		errand_people_lookup->begin());
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, number_people);
-}
-
 
 __device__ int device_fishWeekdayErrand(float yval)
 {
@@ -1798,7 +1706,7 @@ void PandemicSim::assign_weekday_errand_contacts(d_vec * contacts_desired, int n
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day, "assign_weekday_errand_contacts");
 
-	int * arr_ptr = thrust::raw_pointer_cast((*contacts_desired)->data());
+	int * arr_ptr = thrust::raw_pointer_cast(contacts_desired->data());
 
 	//start kernel
 	errand_contacts_kernel<<<cuda_blocks, cuda_threads>>>(arr_ptr, num_infected_adults, rand_offset);
@@ -1955,45 +1863,28 @@ __global__ void victim_index_kernel(
 //this function does final setup and then calls the kernel to make contacts
 //contacts can be validated afterwards if desired
 void PandemicSim::launchContactsKernel(
-	vec_t *infected_indexes_present,vec_t *infected_locations, 
-	vec_t *infected_contacts_desired, int infected_present,
+	const char * hour_string,
+	IntIterator infected_indexes_present_begin, IntIterator infected_locations_begin, 
+	IntIterator infected_contacts_desired_begin, int infected_present_count,
 	int * loc_people_ptr, vec_t *location_offsets, int num_locs)
 {
-	if(SANITY_CHECK)
-	{
-		if((*location_offsets).size() != num_locs + 1)
-		{
-			printf("WARNING: Need to convert old-style loc_offset in function %c\n",profiler.getCurrentFuncName());
-			exit(1);
-		}
-	}
-
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day, "make_contacts");
 
 	if(debug_log_function_calls)
 		debug_print("inside make_contacts");
 
-	//get raw pointers to infected data
-	int * infected_idx_ptr = thrust::raw_pointer_cast((*infected_indexes_present).data());
-	int * infected_loc_ptr = thrust::raw_pointer_cast((*infected_locations).data());
-	int * infected_contacts_ptr = thrust::raw_pointer_cast((*infected_contacts_desired).data());
-
-	//get raw pointers to location data
-	int * loc_offsets_ptr = thrust::raw_pointer_cast((*location_offsets).data());
-
-	//build output offset array:  exclusive scan
-	vec_t output_offsets((*infected_indexes_present).size());
+	//each infected needs to know where to put their contacts in the contacts array
+	vec_t output_offsets(infected_present_count);
 	thrust::exclusive_scan(
-		(*infected_contacts_desired).begin(),
-		(*infected_contacts_desired).end(),
+		infected_contacts_desired_begin,
+		infected_contacts_desired_begin + infected_present_count,
 		output_offsets.begin());
-	int * output_offsets_ptr = thrust::raw_pointer_cast(output_offsets.data());
 
 	//how many contacts we are about to make in total
-	int new_contacts = thrust::reduce((*infected_contacts_desired).begin(), (*infected_contacts_desired).end());
+	int new_contacts = thrust::reduce(infected_contacts_desired_begin, infected_contacts_desired_begin + infected_present_count);
 
-	//if the array is too small, this will go poorly
+	//if the contacts array is too small, resize it to fit
 	if(daily_contacts + new_contacts > daily_contact_infectors.size())
 	{
 		printf("warning:  contacts too small, old size: %d new size: %d\n", daily_contact_infectors.size(), daily_contacts + new_contacts);
@@ -2002,6 +1893,15 @@ void PandemicSim::launchContactsKernel(
 		//daily_contact_kvals.resize(daily_contacts + new_contacts);
 	}
 
+	//get raw pointers to infector data
+	int * infected_idx_ptr = thrust::raw_pointer_cast(infected_indexes_present_begin);
+	int * infected_loc_ptr = thrust::raw_pointer_cast(infected_locations_begin);
+	int * infected_contacts_ptr = thrust::raw_pointer_cast(infected_contacts_desired_begin);
+	int * output_offsets_ptr = thrust::raw_pointer_cast(output_offsets.data());
+
+	//get raw pointers to location data
+	int * loc_offsets_ptr = thrust::raw_pointer_cast((*location_offsets).data());
+
 	//get raw pointers into output array, and advance past spots already filled
 	int * contact_infector_ptr = thrust::raw_pointer_cast(daily_contact_infectors.data());
 	contact_infector_ptr += daily_contacts;
@@ -2009,10 +1909,14 @@ void PandemicSim::launchContactsKernel(
 	contact_victim_ptr += daily_contacts;
 
 	if(print_contact_kernel_setup)
+	{
 		dump_contact_kernel_setup(
-		infected_indexes_present, infected_locations, 
-		infected_contacts_desired, &output_offsets,
-		loc_people_ptr, location_offsets, infected_present);
+			hour_string,
+			infected_indexes_present_begin, infected_locations_begin, 
+			infected_contacts_desired_begin, &output_offsets,
+			loc_people_ptr, location_offsets, 
+			infected_present_count);
+	}
 
 	if(CONSOLE_OUTPUT)
 	{
@@ -2021,13 +1925,6 @@ void PandemicSim::launchContactsKernel(
 		//	printf("infected_present size: %d\ninfected present: %d\ninfected_locations size: %d\ninfected_contacts_desired size: %d\nloc_offsets size: %d\nloc_counts size: %d\nnum_locs: %d\n",
 		//			infected_indexes_present.size(), infected_present, infected_locations.size(), infected_contacts_desired.size(), location_offsets.size(), location_counts.size(), num_locs);
 
-	}
-	//theoretically, the size of the list of infected people present should equal the parameter
-	//If infected_preent < size(), this will be OK - it will just select the first N people
-	//however, it really implies that something else went bad along the way
-	if(SANITY_CHECK)
-	{
-		debug_assert("infected present size mismatch", infected_indexes_present.size(), infected_present);
 	}
 
 
@@ -2038,36 +1935,42 @@ void PandemicSim::launchContactsKernel(
 		infected_idx_ptr, infected_contacts_ptr, output_offsets_ptr, infected_loc_ptr,
 		loc_offsets_ptr, loc_people_ptr, 
 		contact_infector_ptr, contact_victim_ptr, 
-		infected_present, rand_offset);
+		infected_present_count, rand_offset);
 	cudaDeviceSynchronize();
 
 	if(debug_log_function_calls)
 		debug_print("contacts kernel sync'd");
 
-	//adjust global parameters - increment random offset and the # of contacts made today
+	//increment the contacts counter and the RNG counter
 	rand_offset += new_contacts;
 	daily_contacts += new_contacts;
 
 	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_present); 
+		profiler.endFunction(current_day, infected_present_count); 
 }
 
 //dumps the setup that is passed to the make_contacts kernel
 void PandemicSim::dump_contact_kernel_setup(
-	d_vec *infected_indexes_present, d_vec *infected_locations,
-	d_vec *infected_contacts_desired, d_vec *output_offsets, 
+	const char * hour_string,
+	IntIterator infected_indexes_present_begin, IntIterator infected_locations_begin,
+	IntIterator infected_contacts_desired_begin, d_vec * output_offsets,
 	int * location_people_ptr, d_vec *location_offsets,
-	int N
-	)
+	int num_infected)
 {
-	h_vec i_idx = (*infected_indexes_present);
-	h_vec i_loc = (*infected_locations);
-	h_vec i_contacts_desired = (*infected_contacts_desired);
+	h_vec i_idx(num_infected);
+	thrust::copy(infected_indexes_present_begin, infected_indexes_present_begin + num_infected, i_idx.begin());
+
+	h_vec i_loc(num_infected);
+	thrust::copy(infected_locations_begin, infected_locations_begin + num_infected, i_loc.begin());
+
+	h_vec i_contacts_desired(num_infected);
+	thrust::copy(infected_contacts_desired_begin, infected_contacts_desired_begin + num_infected, i_contacts_desired.begin());
+
 	h_vec o_o = (*output_offsets);
 
 	h_vec loc_o = (*location_offsets);
 
-	for(int i = 0; i < N; i++)
+	for(int i = 0; i < num_infected; i++)
 	{
 		int idx = i_idx[i];
 		int loc = i_loc[i];
@@ -3111,16 +3014,16 @@ __global__ void clipContactsDesired_byLocationCount_kernel(int * infected_loc_ar
 
 }
 
-void PandemicSim::clipContactsDesired_byLocationCount(vec_t *infected_locations, int num_infected, vec_t *loc_offsets, vec_t *contacts_desired)
+void PandemicSim::clipContactsDesired_byLocationCount(IntIterator infected_locations_begin, int num_infected, vec_t *loc_offsets, IntIterator contacts_desired_begin)
 {
 	if(PROFILE_SIMULATION)
 	{
 		profiler.beginFunction(current_day,"buildContactsDesired_fromArray");
 	}
 
-	int * infected_loc_arr_ptr = thrust::raw_pointer_cast((*infected_locations).data());
+	int * infected_loc_arr_ptr = thrust::raw_pointer_cast(infected_locations_begin);
 	int * loc_offset_arr_ptr = thrust::raw_pointer_cast((*loc_offsets).data());
-	int * contacts_desired_arr_ptr = thrust::raw_pointer_cast((*contacts_desired).data());
+	int * contacts_desired_arr_ptr = thrust::raw_pointer_cast(contacts_desired_begin);
 
 	clipContactsDesired_byLocationCount_kernel<<<cuda_blocks,cuda_threads>>>(infected_loc_arr_ptr, loc_offset_arr_ptr, contacts_desired_arr_ptr,num_infected);
 	cudaDeviceSynchronize();
@@ -3154,8 +3057,8 @@ void PandemicSim::makeContacts_byContactsDesiredArray(
 	//get contacts desired for each infected person
 	//this will simply clip contacts_desired to zero if they are alone at a location
 	clipContactsDesired_byLocationCount(
-		&infected_locations, infected_list_count,
-		loc_offsets, contacts_desired);
+		infected_locations.begin(), infected_list_count,
+		loc_offsets, contacts_desired->begin());
 
 	//get total number of contacts this hour 
 	int num_new_contacts = thrust::reduce((*contacts_desired).begin(), (*contacts_desired).end());
@@ -3165,8 +3068,9 @@ void PandemicSim::makeContacts_byContactsDesiredArray(
 
 	//make contacts
 	launchContactsKernel(
+		hour_string,
 		infected_list, &infected_locations, 
-		&contacts_desired, infected_list_count,
+		contacts_desired, infected_list_count,
 		location_people_ptr, loc_offsets, num_locs);
 
 	//validate the contacts
@@ -3303,6 +3207,30 @@ void PandemicSim::weekendErrand_doInfectedSetup(vec_t * errand_hours, vec_t * er
 			debug_assert(infected_are_sorted, "infected not sorted for weekend errand hour ", hour);
 		}
 	}
+}
+
+//helper method that will adapt older code to the IntIterator pointers
+void PandemicSim::launchContactsKernel(const char * hour_string, vec_t *infected_indexes_present, vec_t *infected_locations, vec_t *infected_contacts_desired, int infected_present, int * loc_people_ptr, vec_t *location_offsets, int num_locs)
+{
+	if(SANITY_CHECK)
+	{
+		if((*location_offsets).size() != num_locs + 1)
+		{
+			printf("WARNING: Need to convert old-style loc_offset in function %c\n",profiler.getCurrentFuncName());
+			exit(1);
+		}
+
+		//theoretically, the size of the list of infected people present should equal the parameter
+		//If infected_preent < size(), this will be OK - it will just select the first N people
+		//however, it really implies that something else went bad along the way
+		debug_assert("infected present size mismatch", infected_indexes_present->size(), infected_present);
+	}
+
+	launchContactsKernel(
+		hour_string,
+		infected_indexes_present->begin(), infected_locations->begin(), 
+		infected_contacts_desired->begin(), infected_present, 
+		loc_people_ptr, location_offsets, num_locs);
 }
 
 
