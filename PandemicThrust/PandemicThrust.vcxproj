@@ -178,7 +178,6 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="indirect.h" />
-    <ClInclude Include="LocationArray.h" />
     <ClInclude Include="PandemicSim.h" />
     <ClInclude Include="profiler.h" />
     <ClInclude Include="simParameters.h" />
@@ -186,7 +185,6 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <ClInclude Include="thrust_functors.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="LocationArray.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>

@@ -288,11 +288,11 @@ void PandemicSim::setup_loadParameters()
 	//hard coded these for time currently since we have no other sets
 
 	//cdf for child age
-	child_CDF[0] = 0.24;
-	child_CDF[1] = 0.47;
-	child_CDF[2] = 0.72;
-	child_CDF[3] = 0.85;
-	child_CDF[4] = 1.0;
+	child_CDF[0] = 0.24f;
+	child_CDF[1] = 0.47f;
+	child_CDF[2] = 0.72f;
+	child_CDF[3] = 0.85f;
+	child_CDF[4] = 1.0f;
 
 	//what workplace type children get for this age
 	child_wp_types[0] = 3;
@@ -302,20 +302,20 @@ void PandemicSim::setup_loadParameters()
 	child_wp_types[4] = 7;
 
 	//workplace PDF for adults
-	workplace_type_pdf[0] = 0.06586;
-	workplace_type_pdf[1] = 0.05802;
-	workplace_type_pdf[2] = 0.30227;
-	workplace_type_pdf[3] = 0.0048;
-	workplace_type_pdf[4] = 0.00997;
-	workplace_type_pdf[5] = 0.203;
-	workplace_type_pdf[6] = 0.09736;
-	workplace_type_pdf[7] = 0.10598;
-	workplace_type_pdf[8] = 0.00681;
-	workplace_type_pdf[9] = 0.02599;
-	workplace_type_pdf[10] = 0;
-	workplace_type_pdf[11] = 0.08749;
-	workplace_type_pdf[12] = 0.03181;
-	workplace_type_pdf[13] = 0.00064;
+	workplace_type_pdf[0] = 0.06586f;
+	workplace_type_pdf[1] = 0.05802f;
+	workplace_type_pdf[2] = 0.30227f;
+	workplace_type_pdf[3] = 0.0048f;
+	workplace_type_pdf[4] = 0.00997f;
+	workplace_type_pdf[5] = 0.203f;
+	workplace_type_pdf[6] = 0.09736f;
+	workplace_type_pdf[7] = 0.10598f;
+	workplace_type_pdf[8] = 0.00681f;
+	workplace_type_pdf[9] = 0.02599f;
+	workplace_type_pdf[10] = 0.f;
+	workplace_type_pdf[11] = 0.08749f;
+	workplace_type_pdf[12] = 0.03181f;
+	workplace_type_pdf[13] = 0.00064f;
 
 	//number of each type of workplace
 	h_workplace_type_counts[0] = 100;
@@ -343,10 +343,10 @@ void PandemicSim::setup_loadParameters()
 	//pdf for weekday errand location generation
 	//most entries are 0.0
 	thrust::fill(h_weekday_errand_pdf, h_weekday_errand_pdf + NUM_BUSINESS_TYPES, 0.0);
-	h_weekday_errand_pdf[9] = 0.61919;
-	h_weekday_errand_pdf[11] = 0.27812;
-	h_weekday_errand_pdf[12] = 0.06601;
-	h_weekday_errand_pdf[13] = 0.03668;
+	h_weekday_errand_pdf[9] = 0.61919f;
+	h_weekday_errand_pdf[11] = 0.27812f;
+	h_weekday_errand_pdf[12] = 0.06601f;
+	h_weekday_errand_pdf[13] = 0.03668f;
 
 	//pdf for weekend errand location generation
 	//most entries are 0.0
@@ -357,16 +357,16 @@ void PandemicSim::setup_loadParameters()
 	h_weekend_errand_pdf[13] = 0.113f;
 
 	//viral shedding profile
-	h_infectiousness_profile[0] = 0.002533572;
-	h_infectiousness_profile[1] = 0.348252834;
-	h_infectiousness_profile[2] = 0.498210218;
-	h_infectiousness_profile[3] = 0.130145145;
-	h_infectiousness_profile[4] = 0.018421298;
-	h_infectiousness_profile[5] = 0.002158374;
-	h_infectiousness_profile[6] = 0.000245489;
-	h_infectiousness_profile[7] = 2.88922E-05;
-	h_infectiousness_profile[8] = 3.61113E-06;
-	h_infectiousness_profile[9] = 4.83901E-07;
+	h_infectiousness_profile[0] = 0.002533572f;
+	h_infectiousness_profile[1] = 0.348252834f;
+	h_infectiousness_profile[2] = 0.498210218f;
+	h_infectiousness_profile[3] = 0.130145145f;
+	h_infectiousness_profile[4] = 0.018421298f;
+	h_infectiousness_profile[5] = 0.002158374f;
+	h_infectiousness_profile[6] = 0.000245489f;
+	h_infectiousness_profile[7] = 2.88922E-05f;
+	h_infectiousness_profile[8] = 3.61113E-06f;
+	h_infectiousness_profile[9] = 4.83901E-07f;
 
 	//how many adults in each household type
 	hh_adult_count[0] = 1;
@@ -391,15 +391,15 @@ void PandemicSim::setup_loadParameters()
 	hh_child_count[8] = 3;
 
 	//the PDF of each household type
-	hh_type_cdf[0] = 0.279;
-	hh_type_cdf[1] = 0.319;
-	hh_type_cdf[2] = 0.628;
-	hh_type_cdf[3] = 0.671;
-	hh_type_cdf[4] = 0.8;
-	hh_type_cdf[5] = 0.812;
-	hh_type_cdf[6] = 0.939;
-	hh_type_cdf[7] = 0.944;
-	hh_type_cdf[8] = 1.0;
+	hh_type_cdf[0] = 0.279f;
+	hh_type_cdf[1] = 0.319f;
+	hh_type_cdf[2] = 0.628f;
+	hh_type_cdf[3] = 0.671f;
+	hh_type_cdf[4] = 0.8f;
+	hh_type_cdf[5] = 0.812f;
+	hh_type_cdf[6] = 0.939f;
+	hh_type_cdf[7] = 0.944f;
+	hh_type_cdf[8] = 1.0f;
 
 	//store all permutations of contact assignments
 	h_weekend_errand_contact_assignments[0][0] = 2;
@@ -1193,9 +1193,9 @@ void PandemicSim::doWeekendErrands()
 		location_offsets[number_workplaces] = people_count;
 
 		clipContactsDesired_byLocationCount(
-			infected_destinations.begin() + infected_offset,		//infected locations for this hour
+			infected_destinations.data() + infected_offset,		//infected locations for this hour
 			infected_count, &location_offsets,	//number of infected and the location offset table
-			infected_contacts_desired.begin() + infected_offset);
+			infected_contacts_desired.data() + infected_offset);
 
 
 		launchContactsKernel(
@@ -1827,9 +1827,9 @@ __global__ void victim_index_kernel(
 //this function does final setup and then calls the kernel to make contacts
 //contacts can be validated afterwards if desired
 void PandemicSim::launchContactsKernel(
-	const char * hour_string,
-	IntIterator infected_indexes_present_begin, IntIterator infected_locations_begin, 
-	IntIterator infected_contacts_desired_begin, int infected_present_count,
+	const char * hour_string, 
+	d_ptr infected_indexes_present_begin, d_ptr infected_locations_begin, 
+	d_ptr infected_contacts_desired_begin, int infected_present_count,
 	int * loc_people_ptr, vec_t *location_offsets, int num_locs)
 {
 	if(PROFILE_SIMULATION)
@@ -1858,9 +1858,9 @@ void PandemicSim::launchContactsKernel(
 	}
 
 	//get raw pointers to infector data
-	int * infected_idx_ptr ;//= thrust::raw_pointer_cast(infected_indexes_present_begin);
-	int * infected_loc_ptr;// = thrust::raw_pointer_cast(infected_locations_begin);
-	int * infected_contacts_ptr ;//= thrust::raw_pointer_cast(infected_contacts_desired_begin);
+	int * infected_idx_ptr = thrust::raw_pointer_cast(infected_indexes_present_begin);
+	int * infected_loc_ptr = thrust::raw_pointer_cast(infected_locations_begin);
+	int * infected_contacts_ptr = thrust::raw_pointer_cast(infected_contacts_desired_begin);
 	int * output_offsets_ptr = thrust::raw_pointer_cast(output_offsets.data());
 
 	//get raw pointers to location data
@@ -1916,8 +1916,8 @@ void PandemicSim::launchContactsKernel(
 //dumps the setup that is passed to the make_contacts kernel
 void PandemicSim::dump_contact_kernel_setup(
 	const char * hour_string,
-	IntIterator infected_indexes_present_begin, IntIterator infected_locations_begin,
-	IntIterator infected_contacts_desired_begin, d_vec * output_offsets,
+	d_ptr infected_indexes_present_begin, d_ptr infected_locations_begin,
+	d_ptr infected_contacts_desired_begin, d_vec * output_offsets,
 	int * location_people_ptr, d_vec *location_offsets,
 	int num_infected)
 {
@@ -2978,16 +2978,16 @@ __global__ void clipContactsDesired_byLocationCount_kernel(int * infected_loc_ar
 
 }
 
-void PandemicSim::clipContactsDesired_byLocationCount(IntIterator infected_locations_begin, int num_infected, vec_t *loc_offsets, IntIterator contacts_desired_begin)
+void PandemicSim::clipContactsDesired_byLocationCount(d_ptr infected_locations_devPtr_begin, int num_infected, vec_t *loc_offsets, d_ptr contacts_desired_devPtr_begin)
 {
 	if(PROFILE_SIMULATION)
 	{
 		profiler.beginFunction(current_day,"buildContactsDesired_fromArray");
 	}
 
-	int * infected_loc_arr_ptr = thrust::raw_pointer_cast(infected_locations_begin);
+	int * infected_loc_arr_ptr = thrust::raw_pointer_cast(infected_locations_devPtr_begin);
 	int * loc_offset_arr_ptr = thrust::raw_pointer_cast((*loc_offsets).data());
-	int * contacts_desired_arr_ptr = thrust::raw_pointer_cast(contacts_desired_begin);
+	int * contacts_desired_arr_ptr = thrust::raw_pointer_cast(contacts_desired_devPtr_begin);
 
 	clipContactsDesired_byLocationCount_kernel<<<cuda_blocks,cuda_threads>>>(infected_loc_arr_ptr, loc_offset_arr_ptr, contacts_desired_arr_ptr,num_infected);
 	cudaDeviceSynchronize();
@@ -3021,8 +3021,8 @@ void PandemicSim::makeContacts_byContactsDesiredArray(
 	//get contacts desired for each infected person
 	//this will simply clip contacts_desired to zero if they are alone at a location
 	clipContactsDesired_byLocationCount(
-		infected_locations.begin(), infected_list_count,
-		loc_offsets, contacts_desired->begin());
+		infected_locations.data(), infected_list_count,
+		loc_offsets, contacts_desired->data());
 
 	//get total number of contacts this hour 
 	int num_new_contacts = thrust::reduce((*contacts_desired).begin(), (*contacts_desired).end());
@@ -3192,8 +3192,8 @@ void PandemicSim::launchContactsKernel(const char * hour_string, vec_t *infected
 
 	launchContactsKernel(
 		hour_string,
-		infected_indexes_present->begin(), infected_locations->begin(), 
-		infected_contacts_desired->begin(), infected_present, 
+		infected_indexes_present->data(), infected_locations->data(), 
+		infected_contacts_desired->data(), infected_present, 
 		loc_people_ptr, location_offsets, num_locs);
 }
 

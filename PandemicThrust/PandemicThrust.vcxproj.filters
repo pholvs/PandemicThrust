@@ -6,13 +6,9 @@
     <CudaCompile Include="kernel.cu" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="LocationArray.cpp" />
     <ClCompile Include="stdafx.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="LocationArray.h">
-      <Filter>Header files</Filter>
-    </ClInclude>
     <ClInclude Include="PandemicSim.h">
       <Filter>Header files</Filter>
     </ClInclude>

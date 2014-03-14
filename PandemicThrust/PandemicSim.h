@@ -84,12 +84,12 @@ public:
 		vec_t *loc_offsets, vec_t *loc_max_contacts,
 		vec_t *contacts_desired);
 
-	void clipContactsDesired_byLocationCount(IntIterator infected_locations_begin, int num_infected, vec_t *loc_offsets, IntIterator contacts_desired_begin);
+	void clipContactsDesired_byLocationCount(d_ptr infected_locations_begin, int num_infected, vec_t *loc_offsets, d_ptr contacts_desired_begin);
 
 	void dump_contact_kernel_setup(
 		const char * hour_string,
-		IntIterator infected_indexes_present_begin, IntIterator infected_locations_begin,
-		IntIterator infected_contacts_desired_begin, d_vec * output_offsets,
+		d_ptr infected_indexes_present_begin, d_ptr infected_locations_begin,
+		d_ptr infected_contacts_desired_begin, d_vec * output_offsets,
 		int * location_people_ptr, d_vec *location_offsets,
 		int num_infected);
 
@@ -101,8 +101,8 @@ public:
 
 	void launchContactsKernel(
 		const char * hour_string,
-		IntIterator infected_indexes_present_begin, IntIterator infected_locations_begin, 
-		IntIterator infected_contacts_desired_begin, int infected_present_count,
+		d_ptr infected_indexes_present_begin, d_ptr infected_locations_begin, 
+		d_ptr infected_contacts_desired_begin, int infected_present_count,
 		int * loc_people_ptr, vec_t *location_offsets, int num_locs);
 
 	void validate_contacts(const char * contact_type, d_vec *d_people, d_vec *d_lookup, d_vec *d_offsets, int N);

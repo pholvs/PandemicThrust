@@ -14,3 +14,4 @@ ipch/
 output_rn.csv
 *.pdb
 *.suo
+*.opensdf

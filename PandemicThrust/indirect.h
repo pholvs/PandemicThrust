@@ -27,6 +27,7 @@ typedef thrust::device_vector<int> d_vec;
 
 
 typedef vec_t::iterator IntIterator;
+typedef thrust::device_ptr<int> d_ptr;
 
 typedef thrust::tuple<IntIterator,IntIterator,IntIterator> IntIteratorTriple;
 typedef thrust::zip_iterator<IntIteratorTriple> ZipIntTripleIterator;
