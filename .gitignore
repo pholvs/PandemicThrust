@@ -12,3 +12,5 @@ debug.txt
 *.gz
 ipch/
 output_rn.csv
+*.pdb
+*.suo
