@@ -7,6 +7,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LocationArray.cpp" />
+    <ClCompile Include="stdafx.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LocationArray.h">
@@ -23,6 +24,9 @@
     </ClInclude>
     <ClInclude Include="simParameters.h" />
     <ClInclude Include="thrust_functors.h" />
+    <ClInclude Include="stdafx.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header files">

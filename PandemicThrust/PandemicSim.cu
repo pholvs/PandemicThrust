@@ -1,40 +1,4 @@
-
-
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
-
-#include "threefry.h"
-
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-#include <thrust/device_ptr.h>
-#include <thrust/iterator/zip_iterator.h>
-#include <thrust/iterator/transform_iterator.h>
-#include <thrust/iterator/permutation_iterator.h>
-#include <thrust/iterator/constant_iterator.h>
-#include <thrust/tuple.h>
-#include <thrust/fill.h>
-#include <thrust/sort.h>
-#include <thrust/functional.h>
-#include <thrust/merge.h>
-#include <thrust/remove.h>
-#include <thrust/unique.h>
-#include <thrust/pair.h>
-#include <thrust/set_operations.h>
-
-#include <thrust/binary_search.h>
-#include <thrust/sequence.h>
-#include <thrust/transform.h>
-#include <thrust/scan.h>
-#include <thrust/count.h>
-#include <iostream>
-#include <string>
-#include <sstream>
-#include <cstdio>
-#include <cstdlib>
-#include <climits>
-#include <time.h>
-
+#include "stdafx.h"
 
 #include "simParameters.h"
 #include "profiler.h"
@@ -1137,7 +1101,7 @@ void PandemicSim::doWeekend()
 //generates contacts for the 6 errand hours on a weekend
 void PandemicSim::doWeekendErrands()
 {
-	
+	/*
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day, "doWeekendErrands");
 
@@ -1251,7 +1215,7 @@ void PandemicSim::doWeekendErrands()
 	}
 
 	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
+		profiler.endFunction(current_day, infected_count);*/
 }
 
 
@@ -1894,14 +1858,14 @@ void PandemicSim::launchContactsKernel(
 	}
 
 	//get raw pointers to infector data
-	int * infected_idx_ptr = thrust::raw_pointer_cast(infected_indexes_present_begin);
-	int * infected_loc_ptr = thrust::raw_pointer_cast(infected_locations_begin);
-	int * infected_contacts_ptr = thrust::raw_pointer_cast(infected_contacts_desired_begin);
+	int * infected_idx_ptr ;//= thrust::raw_pointer_cast(infected_indexes_present_begin);
+	int * infected_loc_ptr;// = thrust::raw_pointer_cast(infected_locations_begin);
+	int * infected_contacts_ptr ;//= thrust::raw_pointer_cast(infected_contacts_desired_begin);
 	int * output_offsets_ptr = thrust::raw_pointer_cast(output_offsets.data());
 
 	//get raw pointers to location data
 	int * loc_offsets_ptr = thrust::raw_pointer_cast(location_offsets->data());
-	/*
+	
 	//get raw pointers into output array, and advance past spots already filled
 	int * contact_infector_ptr = thrust::raw_pointer_cast(daily_contact_infectors.data());
 	contact_infector_ptr += daily_contacts;

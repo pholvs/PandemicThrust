@@ -1,6 +1,6 @@
 #pragma once
 
-#include <thrust/tuple.h>
+#include "stdafx.h"
 
 //given a ThreeTuple of integers, sort by the first one
 struct Triplet_SortByFirst_Struct
