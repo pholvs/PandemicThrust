@@ -1662,7 +1662,7 @@ void PandemicSim::weekday_scatterErrandLocations(d_vec * people_lookup)
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day, "get_weekday_errand_locations");
 
-	int * adult_indexes_ptr = thrust::raw_pointer_cast((*people_adult_indexes.data()));
+	int * adult_indexes_ptr = thrust::raw_pointer_cast(people_adult_indexes.data());
 	int * output_arr_ptr = thrust::raw_pointer_cast((*people_lookup).data());
 
 	//start kernel
@@ -1900,8 +1900,8 @@ void PandemicSim::launchContactsKernel(
 	int * output_offsets_ptr = thrust::raw_pointer_cast(output_offsets.data());
 
 	//get raw pointers to location data
-	int * loc_offsets_ptr = thrust::raw_pointer_cast((*location_offsets).data());
-
+	int * loc_offsets_ptr = thrust::raw_pointer_cast(location_offsets->data());
+	/*
 	//get raw pointers into output array, and advance past spots already filled
 	int * contact_infector_ptr = thrust::raw_pointer_cast(daily_contact_infectors.data());
 	contact_infector_ptr += daily_contacts;
