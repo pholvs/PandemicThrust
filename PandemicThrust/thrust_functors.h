@@ -209,3 +209,21 @@ struct generationOp
 		return ret;
 	}
 };
+
+struct Pair_SortByFirstThenSecond_struct
+{
+	__host__ __device__
+		bool operator() (thrust::tuple<int,int> a, thrust::tuple<int,int> b)
+	{
+		int a_first= thrust::get<0>(a);
+		int b_first = thrust::get<0>(b);
+
+		int a_second = thrust::get<1>(a);
+		int b_second = thrust::get<1>(b);
+
+		if(a_first != b_first)
+			return a_first < b_first;
+		else
+			return a_second < b_second;
+	}
+};

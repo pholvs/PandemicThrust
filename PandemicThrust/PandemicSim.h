@@ -32,7 +32,7 @@ public:
 	void setup_generateHouseholds();
 	int setup_assignWorkplace();
 	int setup_assignSchool();
-	void setup_deviceData();
+	void setup_pushDeviceData();
 	void setup_initialInfected();
 	void setup_buildFixedLocations();
 
@@ -77,10 +77,11 @@ public:
 
 	void doWeekend();
 	void doWeekendErrands();
-	void copy_weekend_errand_indexes(vec_t * errand_people);
-	void get_weekend_errand_hours(vec_t * errand_hours);
-	void get_weekend_errand_locs(vec_t * errand_locations);
+	void weekend_copyPeopleIndexes(vec_t * errand_people);
+	void weekend_generateThreeUniqueHours(vec_t * errand_hours);
+	void weekend_generateErrandDestinations(vec_t * errand_locations);
 	void dump_weekend_errands(vec_t errand_people, vec_t errand_hours, vec_t errand_locations, int num_to_print, int num_people);
+	void weekendErrand_doInfectedSetup(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_present, vec_t * infected_locations, vec_t * infected_contacts_desired, vec_t * infected_hour_offsets);
 	void make_contacts_WeekendErrand(const char * hour_string, vec_t * errand_people, vec_t *errand_locations, int offset, int count);
 
 	void buildContactsDesired_byLocationMax(
@@ -100,8 +101,8 @@ public:
 		int N
 		);
 	void launchContactsKernel(
-		vec_t *infected_indexes_present, int infected_present,
-		vec_t *infected_locations, vec_t *infected_contacts_desired,
+		vec_t *infected_indexes_present,
+		vec_t *infected_locations, vec_t *infected_contacts_desired, int infected_present,
 		int * loc_people_ptr, vec_t *location_offsets, int num_locs);
 	void validate_contacts(const char * contact_type, d_vec *d_people, d_vec *d_lookup, d_vec *d_offsets, int N);
 
