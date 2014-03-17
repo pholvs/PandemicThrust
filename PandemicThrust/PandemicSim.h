@@ -9,7 +9,7 @@
 #define CULMINATION_PERIOD 10
 #define NUM_BUSINESS_TYPES 14
 
-#define MAX_CONTACTS_PER_DAY 10
+#define MAX_CONTACTS_PER_DAY 8
 
 #define SEED_LENGTH 4
 
@@ -35,6 +35,7 @@ public:
 	void setup_pushDeviceData();
 	void setup_initialInfected();
 	void setup_buildFixedLocations();
+	void setup_sizeContactAndActionArrays();
 
 	void calcLocationOffsets(vec_t * ids_to_sort,vec_t lookup_table_copy,	vec_t * location_offsets,int num_people, int num_locs);
 
@@ -155,18 +156,16 @@ public:
 	int daily_actions;
 	vec_t daily_action_type;
 	vec_t daily_action_infectors;
-	vec_t daily_action_victims;
-	vec_t daily_victim_gen_p;
-	vec_t daily_victim_gen_s;
-
-//	ZipIntQuadIterator daily_actions_begin;
-//	ZipIntQuadIterator daily_actions_end;
+	vec_t daily_action_victim_index;
+	vec_t daily_action_victim_gen_p;
+	vec_t daily_action_victim_gen_s;
 
 	//stores number of infections by generation
 	vec_t generation_pandemic;
 	vec_t generation_seasonal;
 
 	FILE *fInfected, *fLocationInfo, *fContacts, *fActions, *fActionsFiltered;
+	FILE * fContactsKernelSetup;
 
 
 
@@ -183,7 +182,7 @@ public:
 };
 
 #define day_of_week() (current_day % 7)
-#define is_weekend() (day_of_week() < 5 ? 0 : 1)
+#define is_weekend() (1)
 
 void n_unique_numbers(h_vec * array, int n, int max);
 inline char * action_type_to_char(int action);
