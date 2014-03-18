@@ -70,35 +70,41 @@ struct filterPriorInfectedOp
 };
 
 
+const int ACTION_TUPLE_VICTIM_IDX = 1;
+const int ACTION_TUPLE_ACTION_IDX = 0;
+
 
 //predicate functor - return true if action == NONE
 struct removeNoActionOp
 {
 	__device__
-		bool operator () (thrust::tuple<int,int,int> action_tuple)
+		bool operator () (thrust::tuple<int,int,int,int> action_tuple)
 	{
-		int action = thrust::get<0>(action_tuple);
+		int action = thrust::get<ACTION_TUPLE_ACTION_IDX>(action_tuple);
 		return action == ACTION_INFECT_NONE;
 	}
 };
 
 //we will use the unique command to remove duplicate infections, but this requires sorting
-//given a three-tuple of (action, infector, victim) sort by victim (ascending), and then sort by action (descending)
+//given a four-tuple of (action, victim, gen_p, gen_s), sort by victim ascending and then by action descending (both first, then pandemic, then seasonal, then none)
+
+
 struct actionSortOp
 {
 	__device__
-		bool operator () (thrust::tuple<int,int,int> a, thrust::tuple<int,int,int> b)
+		bool operator () (thrust::tuple<int,int,int,int> a, thrust::tuple<int,int,int,int> b)
 	{
-		int victim_a = thrust::get<2>(a);
-		int victim_b = thrust::get<2>(b);
+
+		int victim_a = thrust::get<ACTION_TUPLE_VICTIM_IDX>(a);
+		int victim_b = thrust::get<ACTION_TUPLE_VICTIM_IDX>(b);
 
 		if(victim_a != victim_b)
 		{
 			return victim_a < victim_b;
 		}
 
-		int action_a = thrust::get<0>(a);
-		int action_b = thrust::get<0>(b);
+		int action_a = thrust::get<ACTION_TUPLE_ACTION_IDX>(a);
+		int action_b = thrust::get<ACTION_TUPLE_ACTION_IDX>(b);
 
 		return action_a > action_b;
 	}
@@ -109,21 +115,21 @@ struct actionSortOp
 struct uniqueActionOp
 {
 	__device__
-		bool operator () (thrust::tuple<int,int,int> a, thrust::tuple<int,int,int> b)
+		bool operator () (thrust::tuple<int,int,int,int> a, thrust::tuple<int,int,int,int> b)
 	{
 		//if victim idxs are different, the actions are not duplicate
-		int victim_a = thrust::get<2>(a);
-		int victim_b = thrust::get<2>(b);
+		int victim_a = thrust::get<ACTION_TUPLE_VICTIM_IDX>(a);
+		int victim_b = thrust::get<ACTION_TUPLE_VICTIM_IDX>(b);
 
 		if(victim_a != victim_b)
 			return false;
 
 		//indexes are identical - are the actions different?
-		int op_a = thrust::get<0>(a);
+		int op_a = thrust::get<ACTION_TUPLE_ACTION_IDX>(a);
 		if(op_a == ACTION_INFECT_BOTH)		//any type of infection is duplicate with a "both" action
 			return true;
 
-		int op_b = thrust::get<0>(b);
+		int op_b = thrust::get<ACTION_TUPLE_ACTION_IDX>(b);
 		if(op_a == op_b)
 			return true;
 		else

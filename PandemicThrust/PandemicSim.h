@@ -35,7 +35,7 @@ public:
 	void setup_pushDeviceData();
 	void setup_initialInfected();
 	void setup_buildFixedLocations();
-	void setup_sizeContactAndActionArrays();
+	void setup_sizeGlobalArrays();
 
 	void calcLocationOffsets(vec_t * ids_to_sort,vec_t lookup_table_copy,	vec_t * location_offsets,int num_people, int num_locs);
 
@@ -109,7 +109,7 @@ public:
 	void validate_contacts(const char * contact_type, d_vec *d_people, d_vec *d_lookup, d_vec *d_offsets, int N);
 
 	void dailyUpdate();
-	void daily_assignVictimGenerations();
+	void deprected_daily_assignVictimGenerations();
 	void daily_contactsToActions();
 	void dump_actions();
 	void daily_filterActions();
@@ -120,6 +120,10 @@ public:
 	void daily_rebuildInfectedArray();
 
 	void calculateFinalReproduction();
+
+
+	float sim_scaling_factor;
+	float asymp_factor;
 
 	int number_people;
 	int number_households;
@@ -155,7 +159,6 @@ public:
 
 	int daily_actions;
 	vec_t daily_action_type;
-	vec_t daily_action_infectors;
 	vec_t daily_action_victim_index;
 	vec_t daily_action_victim_gen_p;
 	vec_t daily_action_victim_gen_s;
@@ -167,9 +170,6 @@ public:
 	FILE *fInfected, *fLocationInfo, *fContacts, *fActions, *fActionsFiltered;
 	FILE * fContactsKernelSetup;
 
-
-
-
 	vec_t workplace_counts;
 	vec_t workplace_offsets;
 	vec_t workplace_people;
@@ -179,10 +179,21 @@ public:
 	vec_t household_offsets;
 	vec_t household_people;
 	vec_t household_max_contacts;
+
+	vec_t weekend_errand_people;
+	vec_t weekend_infectedLocations;
+	vec_t weekend_infectedHours;
+
+
+	//DEBUG: these can be used to dump kernel internal data
+	thrust::device_vector<float> debug_float1;
+	thrust::device_vector<float> debug_float2;
+	thrust::device_vector<float> debug_float3;
+	thrust::device_vector<float> debug_float4;
 };
 
 #define day_of_week() (current_day % 7)
-#define is_weekend() (1)
+#define is_weekend() (0)
 
 void n_unique_numbers(h_vec * array, int n, int max);
 inline char * action_type_to_char(int action);

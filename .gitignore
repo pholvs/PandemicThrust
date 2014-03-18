@@ -15,3 +15,5 @@ output_rn.csv
 *.pdb
 *.suo
 *.opensdf
+debug_contacts.csv
+debug_contacts_kernel_setup.csv
