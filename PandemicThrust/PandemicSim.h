@@ -106,7 +106,9 @@ public:
 		d_ptr infected_contacts_desired_begin, int infected_present_count,
 		int * loc_people_ptr, vec_t *location_offsets, int num_locs);
 
-	void validate_contacts(const char * contact_type, d_vec *d_people, d_vec *d_lookup, d_vec *d_offsets, int N);
+	void validate_contacts(const char * hour_string, d_vec *d_people, d_vec *d_lookup, d_vec *d_offsets, int N);
+	void validate_contacts(const char * hour_string, h_vec * h_people, h_vec *h_lookup, h_vec *h_offsets, h_vec *contact_infectors, h_vec *contact_victims, int N);
+	void validate_weekend_errand_contacts(const char * hour_string, d_ptr people_begin, d_ptr destinations_begin, int people_present, d_ptr loc_offsets_ptr, int number_locations, int num_contacts_to_dump);
 
 	void dailyUpdate();
 	void deprected_daily_assignVictimGenerations();
@@ -121,6 +123,7 @@ public:
 
 	void calculateFinalReproduction();
 
+	void debug_dump_array(const char * description, d_vec * gens_array, int array_count);
 
 	float sim_scaling_factor;
 	float asymp_factor;
@@ -181,9 +184,13 @@ public:
 	vec_t household_max_contacts;
 
 	vec_t weekend_errand_people;
+	vec_t weekend_errand_hours;
+	vec_t weekend_errand_destinations;
+
+	vec_t weekend_infectedPresentIndexes;
 	vec_t weekend_infectedLocations;
 	vec_t weekend_infectedHours;
-
+	vec_t weekend_infectedContactsDesired;
 
 	//DEBUG: these can be used to dump kernel internal data
 	thrust::device_vector<float> debug_float1;
@@ -193,7 +200,7 @@ public:
 };
 
 #define day_of_week() (current_day % 7)
-#define is_weekend() (0)
+#define is_weekend() (day_of_week() >= 5)
 
 void n_unique_numbers(h_vec * array, int n, int max);
 inline char * action_type_to_char(int action);

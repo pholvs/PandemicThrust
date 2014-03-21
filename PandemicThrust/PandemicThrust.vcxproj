@@ -92,6 +92,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
     <CudaCompile>
       <CodeGeneration>compute_20,sm_20</CodeGeneration>
+      <AdditionalCompilerOptions>-DTHRUST_DEBUG</AdditionalCompilerOptions>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -115,6 +116,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
       <CodeGeneration>compute_20,sm_20</CodeGeneration>
+      <AdditionalCompilerOptions>-DTHRUST_DEBUG</AdditionalCompilerOptions>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -142,6 +144,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
     <CudaCompile>
       <CodeGeneration>compute_20,sm_20</CodeGeneration>
+      <AdditionalCompilerOptions>-DTHRUST_DEBUG</AdditionalCompilerOptions>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -170,10 +173,11 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <CudaCompile>
       <CodeGeneration>compute_20,sm_20</CodeGeneration>
       <TargetMachinePlatform>64</TargetMachinePlatform>
+      <AdditionalCompilerOptions>-DTHRUST_DEBUG</AdditionalCompilerOptions>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="kernel.cu" />
+    <CudaCompile Include="main.cu" />
     <CudaCompile Include="profiler.cu" />
   </ItemGroup>
   <ItemGroup>

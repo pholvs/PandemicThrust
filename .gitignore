@@ -17,3 +17,6 @@ output_rn.csv
 *.opensdf
 debug_contacts.csv
 debug_contacts_kernel_setup.csv
+debug_filtered_actions.csv
+debug_infected.csv
+debug_actions.csv
