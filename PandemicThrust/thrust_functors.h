@@ -233,3 +233,15 @@ struct Pair_SortByFirstThenSecond_struct
 			return a_second < b_second;
 	}
 };
+
+struct OffsetToCountFunctor_struct : public thrust::unary_function<thrust::tuple<int,int>,int >
+{
+	__host__ __device__
+		int operator() (thrust::tuple<int,int> offsetTuple)
+	{
+		int myOffset = thrust::get<0>(offsetTuple);
+		int nextOffset = thrust::get<1>(offsetTuple);
+
+		return nextOffset - myOffset;
+	}
+};

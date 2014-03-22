@@ -12,9 +12,12 @@
 
 #pragma region settings
 
+#define USE_KAPPA_VALUES 0
+
 //Simulation profiling master control - low performance overhead
 #define PROFILE_SIMULATION 1
 
+//output status messages to console?  Slows things down
 #define CONSOLE_OUTPUT 1
 
 //controls master logging - everything except for profiler
@@ -47,10 +50,12 @@
 //low overhead
 #define debug_log_function_calls 0
 
+#define debug_null_fill_daily_arrays 1
+
 #pragma endregion settings
 
 int cuda_blocks = 32;
-int cuda_threads = 32;
+int cuda_threads = 256;
 
 
 
@@ -100,7 +105,7 @@ int hh_adult_count[HH_TABLE_ROWS];
 int hh_child_count[HH_TABLE_ROWS];
 float hh_type_cdf[HH_TABLE_ROWS];
 
-
+//the first row of the PDF with a value > 0
 #define FIRST_WEEKDAY_ERRAND_ROW 9
 #define FIRST_WEEKEND_ERRAND_ROW 9
 
@@ -113,6 +118,7 @@ PandemicSim::PandemicSim()
 		profiler.initStack();
 
 	setup_loadParameters();
+	setup_scaleSimulation();
 
 	if(debug_log_function_calls)
 		debug_print("parameters loaded");
@@ -333,12 +339,6 @@ void PandemicSim::setup_loadParameters()
 	h_workplace_type_counts[11] = 30;
 	h_workplace_type_counts[12] = 40;
 	h_workplace_type_counts[13] = 10;
-
-	//calculate the offset of each workplace type
-	thrust::exclusive_scan(
-		h_workplace_type_counts,
-		h_workplace_type_counts + NUM_BUSINESS_TYPES,
-		h_workplace_type_offset);			
 
 
 	//pdf for weekday errand location generation
@@ -766,6 +766,8 @@ void PandemicSim::setup_initialInfected()
 		FiveTuple_SortByFirst_Struct());
 
 	infected_count = initial_infected;
+	generation_pandemic[0] = INITIAL_INFECTED_PANDEMIC;
+	generation_seasonal[0] = INITIAL_INFECTED_SEASONAL;
 }
 
 //sets up the locations which are the same every day and do not change
@@ -930,6 +932,8 @@ void PandemicSim::runToCompletion()
 		daily_contact_victims.resize(contacts_expected);
 		//daily_contact_kvals.resize(contacts_expected);*/
 		
+		if(debug_null_fill_daily_arrays)
+			debug_nullFillDailyArrays();
 
 		//debug: dump infected info?
 		if(log_infected_info || print_infected_info)
@@ -982,12 +986,13 @@ void PandemicSim::calculateFinalReproduction()
 	fprintf(out, "gen, size_p, rn_p, size_s, rn_s\n");
 
 	//loop and calculate reproduction
-	int gen_size_p = INITIAL_INFECTED_PANDEMIC;
-	int gen_size_s = INITIAL_INFECTED_SEASONAL;
-	for(int i = 0; i < MAX_DAYS; i++)
+	for(int i = 0; i < MAX_DAYS - 1; i++)
 	{
-		float rn_pandemic = (float) r_pandemic[i] / gen_size_p;
-		float rn_seasonal = (float) r_seasonal[i] / gen_size_s;
+		int gen_size_p = r_pandemic[i];
+		int gen_size_s = r_seasonal[i];
+
+		float rn_pandemic = (float) r_pandemic[i+1] / gen_size_p;
+		float rn_seasonal = (float) r_seasonal[i+1] / gen_size_s;
 
 		fprintf(out, "%d, %d, %f, %d, %f\n",
 			i, gen_size_p, rn_pandemic, gen_size_s, rn_seasonal);
@@ -1102,9 +1107,9 @@ void PandemicSim::dump_infected_info()
 	h_vec h_day_s(infected_count);
 	thrust::copy_n(infected_days_seasonal.begin(), infected_count, h_day_s.begin());
 	h_vec h_gen_p(infected_count);
-	thrust::copy_n(infected_generation_pandemic.begin(), infected_count, infected_generation_seasonal.begin());
+	thrust::copy_n(infected_generation_pandemic.begin(), infected_count, h_gen_p.begin());
 	h_vec h_gen_s(infected_count);
-	thrust::copy_n(infected_generation_seasonal.begin(), infected_count, infected_generation_seasonal.begin());
+	thrust::copy_n(infected_generation_seasonal.begin(), infected_count, h_gen_s.begin());
 
 	h_vec h_p_status_p = people_status_pandemic;
 	h_vec h_p_status_s = people_status_seasonal;
@@ -1920,8 +1925,6 @@ __global__ void victim_index_kernel(
 	}	//end for each infector
 }
 
-
-
 //this function does final setup and then calls the kernel to make contacts
 //contacts can be validated afterwards if desired
 void PandemicSim::launchContactsKernel(
@@ -1947,7 +1950,7 @@ void PandemicSim::launchContactsKernel(
 	int new_contacts = thrust::reduce(infected_contacts_desired_begin, infected_contacts_desired_begin + infected_present_count);
 
 	//if the contacts array is too small, resize it to fit
-	if(daily_contacts + new_contacts > daily_contact_infectors.size())
+	if((unsigned int) daily_contacts + new_contacts > daily_contact_infectors.size())
 	{
 		printf("warning:  contacts too small, old size: %d new size: %d\n", daily_contact_infectors.size(), daily_contacts + new_contacts);
 		daily_contact_infectors.resize(daily_contacts + new_contacts);
@@ -2283,8 +2286,8 @@ __global__ void contacts_to_actions_kernel(
 		int day_s = day_s_arr[myPos];
 
 		//if they make a successful contact, the victim will receive these generations
-		int victim_gen_p = inf_gen_p_arr[myPos] + 1;
-		int victim_gen_s = inf_gen_s_arr[myPos] + 1;
+		int victim_gen_p = GENERATION_NOT_INFECTED;
+		int victim_gen_s = GENERATION_NOT_INFECTED;
 			
 		//start with zero probability of infection - if the person is infected, increase it
 		float inf_prob_p = 0.0;
@@ -2292,7 +2295,7 @@ __global__ void contacts_to_actions_kernel(
 		if(day_p >= 0)
 		{
 			inf_prob_p = (infectiousness_profile[current_day - day_p] * BASE_REPRODUCTION_DEVICE[0]) / (float) contacts_desired;
-//				inf_prob_p = day_p;
+			victim_gen_p = inf_gen_p_arr[myPos] + 1;
 		}
 			
 		//same for seasonal
@@ -2301,7 +2304,7 @@ __global__ void contacts_to_actions_kernel(
 		if(day_s >= 0)
 		{
 			inf_prob_s = (infectiousness_profile[current_day - day_s] * BASE_REPRODUCTION_DEVICE[1]) / (float) contacts_desired;
-//				inf_prob_s = day_s;
+			victim_gen_s = inf_gen_s_arr[myPos] + 1;
 		}
 			
 		while(contacts_desired > 0)
@@ -2357,7 +2360,6 @@ __global__ void contacts_to_actions_kernel(
 //starts the kernel to convert contacts to actions
 void PandemicSim::daily_contactsToActions()
 {
-	
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day, "contacts_to_actions");
 	
@@ -2365,12 +2367,24 @@ void PandemicSim::daily_contactsToActions()
 		debug_print("beginning contacts-to-action setup");
 	
 	//sort contacts by infector
-	thrust::sort_by_key(
+	if(USE_KAPPA_VALUES)
+	{
+		thrust::sort_by_key(
+			daily_contact_infectors.begin(),
+			daily_contact_infectors.begin() + daily_contacts,
+			thrust::make_zip_iterator(thrust::make_tuple(
+				daily_contact_victims.begin(), daily_contact_kvals.begin())));
+	}
+	else
+	{
+		thrust::sort_by_key(
 			daily_contact_infectors.begin(),
 			daily_contact_infectors.begin() + daily_contacts,
 			daily_contact_victims.begin());
+	}
+
 	
-	//size our actino output arrays
+	//size our action output arrays
 	//moved to setup function, only done once to prevent fragmentation
 
 	//get lower bound of each infector, aka index
@@ -2382,7 +2396,6 @@ void PandemicSim::daily_contactsToActions()
 			infected_indexes.begin() + infected_count,			//value to search
 			infector_contacts_offset.begin());
 	infector_contacts_offset[infected_count] = daily_contacts;
-
 	
 	//convert thrust vectors to raw pointers
 	int * inf_offset_ptr = thrust::raw_pointer_cast(infector_contacts_offset.data());
@@ -2391,7 +2404,7 @@ void PandemicSim::daily_contactsToActions()
 	int * day_s_ptr = thrust::raw_pointer_cast(infected_days_seasonal.data());
 
 	int * inf_gen_p_ptr = thrust::raw_pointer_cast(infected_generation_pandemic.data());
-	int * inf_gen_s_ptr= thrust::raw_pointer_cast(infected_generation_seasonal.data());
+	int * inf_gen_s_ptr = thrust::raw_pointer_cast(infected_generation_seasonal.data());
 
 	//stores what type of action resulted
 	int * actions_type_ptr = thrust::raw_pointer_cast(daily_action_type.data());
@@ -2407,7 +2420,7 @@ void PandemicSim::daily_contactsToActions()
 
 	if(debug_log_function_calls)
 		debug_print("calling contacts-to-action kernel");
-	
+
 	//determine whether each infection was successful
 	contacts_to_actions_kernel<<<cuda_blocks, cuda_threads>>>(
 			inf_offset_ptr,
@@ -2424,6 +2437,7 @@ void PandemicSim::daily_contactsToActions()
 	
 	rand_offset += daily_contacts; //increment rand counter
 	daily_actions = daily_contacts; //stores # of actions to allow dumping - set in filter after filtering
+
 
 	if(log_actions || print_actions)
 		dump_actions(
@@ -2518,23 +2532,11 @@ void PandemicSim::daily_filterActions()
 		profiler.endFunction(current_day, daily_contacts);
 }
 
-
-__global__ void countReproduction_kernel(int * generation_offset_array, int MAX_GENERATION_NUM, int * output_generation_array)
-{
-	for(int myGen = blockIdx.x * blockDim.x + threadIdx.x;  myGen < MAX_GENERATION_NUM; myGen += gridDim.x * blockDim.x)
-	{
-		int generation_count = generation_offset_array[myGen + 1] - generation_offset_array[myGen];
-
-		int stored_gen_count = output_generation_array[myGen];
-		output_generation_array[myGen] = stored_gen_count + generation_count;
-	}
-}
-
 //given an action type, look through the filtered actions and count generations
 void PandemicSim::daily_countReproductionNumbers(int action)
 {
 	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "count_reproduction");
+		profiler.beginFunction(current_day, "daily_countReproductionNumbers");
 
 	if(debug_log_function_calls)
 		debug_print("counting reproduction");
@@ -2577,18 +2579,6 @@ void PandemicSim::daily_countReproductionNumbers(int action)
 	//sort generations so we can count them
 	thrust::sort(pandemic_gens.begin(), gens_end);
 
-
-	if(action == ACTION_INFECT_PANDEMIC)
-	{
-		printf("Pandemic gens:\tcount: %d\n",num_matching_actions);
-		debug_dump_array("pandemic_gen", &pandemic_gens, num_matching_actions);
-	}
-	else
-	{
-		printf("Seasonal gens:\tcount: %d\n", num_matching_actions);
-		debug_dump_array("seasonal_gen", &pandemic_gens, num_matching_actions);
-	}
-
 	thrust::counting_iterator<int> count_iterator(0);
 
 	d_vec lower_bound(MAX_DAYS + 1);
@@ -2600,35 +2590,28 @@ void PandemicSim::daily_countReproductionNumbers(int action)
 		lower_bound.begin());
 	lower_bound[MAX_DAYS] = num_matching_actions;
 
-	printf("lower bound: \n");
-	debug_dump_array("offset",&lower_bound, 10);
-
-	//note: this does not use the global threading settings, since we are searching a fixed block of generations
-	int threadsPerBlock = 32;
-	int numBlocks = (int) MAX_DAYS / threadsPerBlock;
 	//increment the generation counts in the appropriate array
 	if(action == ACTION_INFECT_PANDEMIC)
 	{
-		int * today_generations_ptr = thrust::raw_pointer_cast(pandemic_gens.data());
-		int * pandemic_gens_ptr = thrust::raw_pointer_cast(generation_pandemic.data());
-		countReproduction_kernel<<<numBlocks,threadsPerBlock>>>(today_generations_ptr, num_matching_actions, pandemic_gens_ptr);
-		cudaDeviceSynchronize();
-
-		printf("after reproduction kernel, pandemic is:\n");
-		debug_dump_array("val",&generation_pandemic, 10);
+		thrust::transform(
+			generation_pandemic.begin(),
+			generation_pandemic.begin() + MAX_DAYS,
+			thrust::make_transform_iterator(
+				thrust::make_zip_iterator(thrust::make_tuple(lower_bound.begin(), lower_bound.begin() + 1)),
+				OffsetToCountFunctor_struct()),
+			generation_pandemic.begin(),
+			thrust::plus<int>());
 	}
-	else if(action == ACTION_INFECT_SEASONAL)
+	else  //seasonal
 	{
-		int * today_generations_ptr = thrust::raw_pointer_cast(pandemic_gens.data());
-		int * seasonal_gens_ptr = thrust::raw_pointer_cast(generation_seasonal.data());
-		countReproduction_kernel<<<numBlocks,threadsPerBlock>>>(today_generations_ptr, num_matching_actions,seasonal_gens_ptr);
-		cudaDeviceSynchronize();
-
-		printf("after reproduction kernel, seasonal is:\n");
-		debug_dump_array("val",&generation_seasonal, 10);
-	}
-	else{
-		throw; //action should be either seasonal or pandemic
+		thrust::transform(
+			generation_seasonal.begin(),
+			generation_seasonal.begin() + MAX_DAYS,
+			thrust::make_transform_iterator(
+				thrust::make_zip_iterator(thrust::make_tuple(lower_bound.begin(), lower_bound.begin() + 1)),
+				OffsetToCountFunctor_struct()),
+			generation_seasonal.begin(),
+			thrust::plus<int>());
 	}
 
 	if(debug_log_function_calls)
@@ -2643,7 +2626,6 @@ void PandemicSim::daily_countReproductionNumbers(int action)
 //This uses a lot of disk space, so outputs are compressed with zlib.
 //Dump the logs to disk using the 'zcat' utility
 void PandemicSim::dump_actions(
-//		thrust::device_vector<float> rand1, thrust::device_vector<float> rand2, thrust::device_vector<float> rand3, thrust::device_vector<float> rand4
 		)
 {
 	//copy data to host - only as much data as we have contacts
@@ -3334,7 +3316,8 @@ void PandemicSim::setup_sizeGlobalArrays()
 	//resize contact arrays
 	daily_contact_infectors.resize(expected_max_contacts);
 	daily_contact_victims.resize(expected_max_contacts);
-	daily_contact_kvals.resize(expected_max_contacts);
+	if(USE_KAPPA_VALUES)
+		daily_contact_kvals.resize(expected_max_contacts);
 
 	//resize action arrays
 	daily_action_type.resize(expected_max_contacts);
@@ -3418,6 +3401,50 @@ void PandemicSim::debug_dump_array(const char * description, d_vec * gens_array,
 	{
 		printf("%3d\t%s: %d\n",i,description, host_array[i]);
 	}
+}
+
+void PandemicSim::debug_nullFillDailyArrays()
+{
+	thrust::fill(daily_contact_infectors.begin(), daily_contact_infectors.end(), -1);
+	thrust::fill(daily_contact_victims.begin(), daily_contact_victims.end(), -1);
+	thrust::fill(daily_contact_kvals.begin(), daily_contact_kvals.end(), -1);
+
+	thrust::fill(daily_action_type.begin(), daily_action_type.end(), -1);
+	thrust::fill(daily_action_victim_index.begin() ,daily_action_victim_index.end(), -1);
+	thrust::fill(daily_action_victim_gen_p.begin(), daily_action_victim_gen_p.end(), GENERATION_NOT_INFECTED);
+	thrust::fill(daily_action_victim_gen_s.begin(), daily_action_victim_gen_s.end(), GENERATION_NOT_INFECTED);
+
+	thrust::fill(weekend_infectedPresentIndexes.begin(), weekend_infectedPresentIndexes.end(), -1);
+	thrust::fill(weekend_infectedLocations.begin(), weekend_infectedLocations.end(), -1);
+	thrust::fill(weekend_infectedHours.begin(), weekend_infectedHours.end(), -1);
+	thrust::fill(weekend_infectedContactsDesired.begin(), weekend_infectedContactsDesired.end(), -1);
+}
+
+void PandemicSim::setup_scaleSimulation()
+{
+	number_households = roundHalfUp_toInt(sim_scaling_factor * (double) number_households);
+
+	int sum = 0;
+	for(int business_type = 0; business_type < NUM_BUSINESS_TYPES; business_type++)
+	{
+		//for each type of business, scale by overall simulation scalar
+		int original_type_count = roundHalfUp_toInt(h_workplace_type_counts[business_type]);
+		int new_type_count = roundHalfUp_toInt(sim_scaling_factor * original_type_count);
+
+		//if at least one business of this type existed in the original data, make sure at least one exists in the new data
+		if(new_type_count == 0 && original_type_count > 0)
+			new_type_count = 1;
+
+		sum += new_type_count;
+	}
+
+	number_workplaces = sum;
+
+	//calculate the offset of each workplace type
+	thrust::exclusive_scan(
+		h_workplace_type_counts,
+		h_workplace_type_counts + NUM_BUSINESS_TYPES,
+		h_workplace_type_offset);			
 }
 
 
@@ -3516,3 +3543,7 @@ void n_unique_numbers(h_vec *array, int n, int max)
 	}
 }
 
+int roundHalfUp_toInt(double d)
+{
+	return floor(d + 0.5);
+}

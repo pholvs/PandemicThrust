@@ -37,6 +37,9 @@ public:
 	void setup_buildFixedLocations();
 	void setup_sizeGlobalArrays();
 
+	void setup_scaleSimulation();
+	void setup_setCudaTopology();
+
 	void calcLocationOffsets(vec_t * ids_to_sort,vec_t lookup_table_copy,	vec_t * location_offsets,int num_people, int num_locs);
 
 	CudaProfiler profiler;
@@ -124,6 +127,7 @@ public:
 	void calculateFinalReproduction();
 
 	void debug_dump_array(const char * description, d_vec * gens_array, int array_count);
+	void debug_nullFillDailyArrays();
 
 	float sim_scaling_factor;
 	float asymp_factor;
@@ -209,6 +213,8 @@ inline void debug_print(char * message);
 inline void debug_assert(bool condition, char * message);
 inline void debug_assert(char *message, int expected, int actual);
 inline void debug_assert(bool condition, char * message, int idx);
+
+int roundHalfUp_toInt(double d);
 
 
 struct weekend_getter;
