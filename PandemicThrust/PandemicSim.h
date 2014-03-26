@@ -69,7 +69,7 @@ public:
 
 	void weekday_scatterAfterschoolLocations(vec_t * child_locs);
 
-	void filterInfectedByPopulationGroup(const char * hour_string, vec_t * population_group, vec_t * infected_present);
+	int filterInfectedByPopulationGroup(const char * hour_string, vec_t * population_group, vec_t * infected_present);
 	void assign_weekday_errand_contacts(d_vec * contacts_desired, int num_infected_adults);
 	void doWeekdayErrands();
 	void weekday_scatterErrandLocations(d_vec * locations_array);
@@ -127,6 +127,7 @@ public:
 	void calculateFinalReproduction();
 
 	void debug_dump_array(const char * description, d_vec * gens_array, int array_count);
+	void debug_dump_array_toTempFile(const char * description, d_vec * array, int count);
 	void debug_nullFillDailyArrays();
 
 	float sim_scaling_factor;
@@ -171,8 +172,8 @@ public:
 	vec_t daily_action_victim_gen_s;
 
 	//stores number of infections by generation
-	vec_t generation_pandemic;
-	vec_t generation_seasonal;
+	vec_t reproduction_count_pandemic;
+	vec_t reproduction_count_seasonal;
 
 	FILE *fInfected, *fLocationInfo, *fContacts, *fActions, *fActionsFiltered;
 	FILE * fContactsKernelSetup;
@@ -187,14 +188,17 @@ public:
 	vec_t household_people;
 	vec_t household_max_contacts;
 
-	vec_t weekend_errand_people;
-	vec_t weekend_errand_hours;
-	vec_t weekend_errand_destinations;
+	vec_t errand_people_table;		//people_array for errands
+	vec_t errand_people_weekendHours;		//which hours people will do errands on weekends
+	vec_t errand_people_destinations;		//lookup table (may not contain all entries on weekends)
+	vec_t errand_locationOffsets;		//location offset table
 
-	vec_t weekend_infectedPresentIndexes;
-	vec_t weekend_infectedLocations;
-	vec_t weekend_infectedHours;
-	vec_t weekend_infectedContactsDesired;
+	vec_t errand_infected_indexesPresent;		//list of infected present during an errand
+	vec_t errand_infected_locations;			//the location of infected
+	vec_t errand_infected_weekendHours;				//the hours an infected person does their errands/contacts
+	vec_t errand_infected_ContactsDesired;		//how many contacts are desired on a given errand
+
+	vec_t infected_output_offsets;
 
 	//DEBUG: these can be used to dump kernel internal data
 	thrust::device_vector<float> debug_float1;
@@ -204,7 +208,8 @@ public:
 };
 
 #define day_of_week() (current_day % 7)
-#define is_weekend() (day_of_week() >= 5)
+//#define is_weekend() (day_of_week() >= 5)
+#define is_weekend() (0)
 
 void n_unique_numbers(h_vec * array, int n, int max);
 inline char * action_type_to_char(int action);
