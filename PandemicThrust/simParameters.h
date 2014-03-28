@@ -17,5 +17,20 @@
 
 #define BUSINESS_TYPE_AFTERSCHOOL 9
 
+const int NUM_WEEKDAY_ERRAND_HOURS = 2;
+
 const int NUM_WEEKEND_ERRANDS = 3;
 const int NUM_WEEKEND_ERRAND_HOURS = 10;
+
+const int CONTACT_TYPE_NONE = 0;
+const int CONTACT_TYPE_WORKPLACE = 1;
+const int CONTACT_TYPE_SCHOOL = 2;
+const int CONTACT_TYPE_ERRAND = 3;
+const int CONTACT_TYPE_AFTERSCHOOL = 4;
+const int CONTACT_TYPE_HOME = 5;
+
+const int NUM_CONTACT_TYPES = 6;
+
+const int NULL_PERSON_INDEX = -1;
+
+const int AGE_ADULT = 5;

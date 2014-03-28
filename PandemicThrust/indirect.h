@@ -37,3 +37,5 @@ typedef thrust::zip_iterator<IntIteratorQuad> ZipIntQuadIterator;
 
 typedef thrust::tuple<IntIterator,IntIterator,IntIterator,IntIterator,IntIterator> IntIteratorFiveTuple;
 typedef thrust::zip_iterator<IntIteratorFiveTuple> ZipIntFiveTupleIterator;
+
+typedef int kval_t;

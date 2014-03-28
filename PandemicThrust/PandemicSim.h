@@ -9,7 +9,10 @@
 #define CULMINATION_PERIOD 10
 #define NUM_BUSINESS_TYPES 14
 
-#define MAX_CONTACTS_PER_DAY 8
+#define MAX_CONTACTS_WEEKDAY 8
+#define MAX_CONTACTS_WEEKEND 5
+
+#define MAX_CONTACTS_PER_DAY __max(MAX_CONTACTS_WEEKDAY, MAX_CONTACTS_WEEKEND)
 
 #define SEED_LENGTH 4
 
@@ -178,12 +181,10 @@ public:
 	FILE *fInfected, *fLocationInfo, *fContacts, *fActions, *fActionsFiltered;
 	FILE * fContactsKernelSetup;
 
-	vec_t workplace_counts;
 	vec_t workplace_offsets;
 	vec_t workplace_people;
 	vec_t workplace_max_contacts;
 
-	vec_t household_counts;
 	vec_t household_offsets;
 	vec_t household_people;
 	vec_t household_max_contacts;
@@ -224,3 +225,23 @@ int roundHalfUp_toInt(double d);
 
 struct weekend_getter;
 __global__ void weekend_errand_hours_kernel(int * hours_array, int N, int rand_offset);
+__global__ void makeContactsKernel_weekday(int num_infected, int * infected_indexes, int * infected_age,
+										   int * household_lookup, int * household_offsets, int * household_people,
+										   int * workplace_max_contacts, int * workplace_lookup, 
+										   int * workplace_offsets, int * workplace_people,
+										   int * errand_contacts_desired, int * errand_lookup, 
+										   int * errand_loc_offsets, int * errand_people,
+										   int number_locations, 
+										   int * output_infector_arr, int * output_victim_arr, int * output_kval_arr,
+										   int rand_offset);
+__device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_offset, int loc_count, int rand_val, kval_t desired_kval, int * location_offsets, int * location_people_arr, int * output_infector_idx_arr, int * output_victim_idx_arr, int * output_kval_arr);
+__device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_offset, int * loc_count);
+__device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_max_contacts_arr, int * loc_offset, int * loc_count, int * loc_max_contacts);
+__device__ void device_lookupLocationData_multiHour(int myPos, int hour, int * location_lookup_arr, int * loc_offset_arr, int number_locations, int * contacts_desired_lookup, int number_hours, int * output_loc_offset, int * output_loc_count, int * output_contacts_desired);
+
+__device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
+													int * contacts_desired_arr, int * hour_arr, int * location_arr, 
+													int * output_contacts_desired, int * output_hour, int * output_location);
+
+inline const char * lookup_contact_type(int contact_type);
+inline const char * lookup_workplace_type(int workplace_type);
