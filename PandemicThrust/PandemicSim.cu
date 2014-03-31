@@ -8,7 +8,7 @@
 
 
 
-#define SIM_DEBUG 1
+#define USING_ERRAND_ID_ARRAYS 1
 
 #pragma region settings
 
@@ -3376,7 +3376,17 @@ void PandemicSim::setup_sizeGlobalArrays()
 	errand_infected_weekendHours.resize(num_weekend_errands);
 	errand_infected_ContactsDesired.resize(num_weekend_errands);
 
-	infected_output_offsets.resize(number_people);
+	infected_output_offsets.resize(number_people + 1);
+
+	if(USING_ERRAND_ID_ARRAYS)
+	{
+		errand_locationIds.resize(number_workplaces * NUM_WEEKEND_ERRAND_HOURS);
+		errand_locationHours.resize(number_workplaces * NUM_WEEKEND_ERRAND_HOURS);
+		errand_locationOffsets_multiHour.resize((number_workplaces * NUM_WEEKEND_ERRAND_HOURS) + 1);
+
+		setup_initWeekendErrandSearchArrays();
+	}
+
 
 	if(dump_contact_kernel_random_data)
 	{
@@ -3502,6 +3512,20 @@ void PandemicSim::debug_dump_array_toTempFile(const char * description, d_vec * 
 		fprintf(fTemp,"%3d\t%s: %d\n",i,description, host_array[i]);
 	}
 	fclose(fTemp);
+}
+
+void PandemicSim::setup_initWeekendErrandSearchArrays()
+{
+	for(int hour = 0; hour < NUM_WEEKEND_ERRAND_HOURS; hour++)
+	{
+		int start = hour * number_workplaces;
+
+		//fill the next number_workplaces locations with this hour number
+		thrust::fill_n(errand_locationHours.begin() + start, number_workplaces, hour);
+
+		//sequence 0 -> n-1
+		thrust::sequence(errand_locationIds.begin() + start, errand_locationIds.begin() + start + number_workplaces);
+	}
 }
 
 
@@ -3643,19 +3667,19 @@ __global__ void makeContactsKernel_weekday(int num_infected, int * infected_inde
 		device_lookupLocationData_singleHour(myIdx, household_lookup, household_offsets, &loc_offset, &loc_count);  //lookup location data for household
 		device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[0], CONTACT_TYPE_HOME,
-			household_offsets,household_people,
+			household_people,
 			output_infector_arr + output_offset_base + 0,
 			output_victim_arr + output_offset_base + 0,
 			output_kval_arr + output_offset_base + 0);
 		device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[1], CONTACT_TYPE_HOME,
-			household_offsets,household_people,
+			household_people,
 			output_infector_arr + output_offset_base + 1,
 			output_victim_arr + output_offset_base + 1,
 			output_kval_arr + output_offset_base + 1);
 		device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[2], CONTACT_TYPE_HOME,
-			household_offsets,household_people,
+			household_people,
 			output_infector_arr + output_offset_base + 2,
 			output_victim_arr + output_offset_base + 2,
 			output_kval_arr + output_offset_base + 2);
@@ -3684,7 +3708,7 @@ __global__ void makeContactsKernel_weekday(int num_infected, int * infected_inde
 			int output_offset = output_offset_base + contacts_made;
 			device_selectRandomPersonFromLocation(
 				myIdx,loc_offset, loc_count, rand_union.i[contacts_made], kval_type,
-				workplace_offsets,workplace_people,
+				workplace_people,
 				output_infector_arr + output_offset,
 				output_victim_arr + output_offset,
 				output_kval_arr + output_offset);
@@ -3716,7 +3740,7 @@ __global__ void makeContactsKernel_weekday(int num_infected, int * infected_inde
 				int output_offset = output_offset_base + contacts_made;
 				device_selectRandomPersonFromLocation(
 					myIdx, loc_offset, loc_count, rand_union.i[contacts_made], kval_type,
-					errand_loc_offsets, errand_people, 
+					errand_people, 
 					output_infector_arr + output_offset,
 					output_victim_arr + output_offset,
 					output_kval_arr + output_offset);
@@ -3745,7 +3769,6 @@ __global__ void makeContactsKernel_weekend(int num_infected, int * infected_inde
 		int myIdx = infected_indexes[myPos];
 
 		int loc_offset, loc_count;
-		int contacts_desired;
 
 		threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
 		union{
@@ -3761,19 +3784,19 @@ __global__ void makeContactsKernel_weekend(int num_infected, int * infected_inde
 		device_lookupLocationData_singleHour(myIdx, household_lookup, household_offsets, &loc_offset, &loc_count);  //lookup location data for household
 		device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[0], CONTACT_TYPE_HOME,
-			household_offsets,household_people,
+			household_people,
 			output_infector_arr + output_offset_base + 0,
 			output_victim_arr + output_offset_base + 0,
 			output_kval_arr + output_offset_base + 0);
 		device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[1], CONTACT_TYPE_HOME,
-			household_offsets,household_people,
+			household_people,
 			output_infector_arr + output_offset_base + 1,
 			output_victim_arr + output_offset_base + 1,
 			output_kval_arr + output_offset_base + 1);
 		device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[2], CONTACT_TYPE_HOME,
-			household_offsets,household_people,
+			household_people,
 			output_infector_arr + output_offset_base + 2,
 			output_victim_arr + output_offset_base + 2,
 			output_kval_arr + output_offset_base + 2);
@@ -3783,37 +3806,52 @@ __global__ void makeContactsKernel_weekend(int num_infected, int * infected_inde
 		threefry2x32_ctr_t tf_ctr_32 = {{((myPos * 2) + rand_offset + 1),((myPos * 2) + rand_offset + 1)}};		
 		union{
 			threefry2x32_ctr_t c;
-			unsigned int i[4];
+			unsigned int i[2];
 		} rand_union_32;
 		rand_union_32.c = threefry2x32(tf_ctr_32, tf_k_32);
 
-		int contacts_made = 3;
+
+		output_offset_base += 3;
+		int contacts_made = 0;
 
 		int hour_slot = 0;
-		while(hour_slot < NUM_WEEKEND_ERRANDS)
+		while(hour_slot < NUM_WEEKEND_ERRANDS && contacts_made < 2)
 		{
 			int hour_contacts_desired, hour_value, hour_destination;
+
+			//lookup the hour, the destination, and the contacts desired
 			device_lookupInfectedErrand_weekend(
 				myPos,hour_slot, 
 				infected_errand_contacts_desired,infected_errand_hours,infected_errand_destinations,
 				&hour_contacts_desired, &hour_value, &hour_destination);
 
-			//lookup location info
-
-
 			while(hour_contacts_desired > 0)
 			{
+				//fetch the location offset/count
+				device_lookupLocationData_weekendErrand(hour_destination, hour_value, errand_loc_offsets, number_locations, &loc_offset, &loc_count);
+
 				int output_offset = output_offset_base + contacts_made;
 
-				//new method goes here
+				device_selectRandomPersonFromLocation(
+					myIdx, loc_offset, loc_count,rand_union_32.i[contacts_made], CONTACT_TYPE_ERRAND,
+					errand_people,
+					output_infector_arr + output_offset,
+					output_victim_arr + output_offset,
+					output_kval_arr + output_offset);
 
 				hour_contacts_desired--;
 				contacts_made++;
 			}
 		}
 	}
-
 }
+
+/// <summary> given an index, look up the location and fetch the offset/count data from the memory array </summary>
+/// <param name="myIdx">Input: Index of the infector to look up</param>
+/// <param name="lookup_arr">Input: Pointer to an array containing all infector locations</param>
+/// <param name="loc_offset_arr">Input: Pointer to an array containing location offsets</param>
+/// <param name="loc_offset">Output value: offset to first person in infector's location</param>
+/// <param name="loc_count">Output value: number of people at infector's location</param>
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_offset, int * loc_count)
 {
 	int myLoc = lookup_arr[myIdx];
@@ -3821,6 +3859,15 @@ __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr
 	(*loc_offset) = loc_offset_arr[myLoc];
 	(*loc_count) = loc_offset_arr[myLoc + 1] - loc_offset_arr[myLoc];
 }
+
+/// <summary> given an index, look up the location and fetch the offset/count/max_contacts values from the memory array </summary>
+/// <param name="myIdx">Input: Index of the infector to look up</param>
+/// <param name="lookup_arr">Input: Pointer to an array containing all infector locations</param>
+/// <param name="loc_offset_arr">Input: Pointer to an array containing a location offsets</param>
+/// <param name="loc_max_contacts_arr">Input: pointer to an array containing max_contact values</param>
+/// <param name="loc_offset">Output: offset to first person in infector's location</param>
+/// <param name="loc_count">Output: number of people at infector's location</param>
+/// <param name="loc_max_contacts">Output: max_contacts for infector's location</param>
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_max_contacts_arr, int * loc_offset, int * loc_count, int * loc_max_contacts)
 {
 	int myLoc = lookup_arr[myIdx];
@@ -3830,6 +3877,29 @@ __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr
 	(*loc_max_contacts) = loc_max_contacts_arr[myLoc];
 }
 
+
+__device__ void device_lookupLocationData_weekendErrand(int location, int hour, int * loc_offset_arr, int number_locations, int * output_location_offset, int * output_location_count)
+{
+	//location offsets are stored in collated format, eg for 3 locations and 2 hours:
+	// 1 2 3 1 2 3
+	int location_offset_position = (hour * number_locations) + location;
+
+	(*output_location_offset) = loc_offset_arr[location_offset_position];
+	(*output_location_count) = loc_offset_arr[location_offset_position + 1] - loc_offset_arr[location_offset_position];
+
+}
+
+/// <summary>Gets location data and number of contacts desired from a multi-hour errand array</summary>
+/// <param name="myPos">Input: Which of the N infected individuals we are working with, 0 <= myPos <= infected_count</param>
+/// <param name="hour">Input: Which hour we are looking up information for, 0 < hour <= <paramref name="number_hours" /></param>
+/// <param name="location_lookup_arr">Input: Pointer to an array containing errand destinations in packed arrangement</param>
+/// <param name="loc_offset_arr>Input: pointer to an array containing location offsets in collated arrangement</param>
+/// <param name="number_locations>Input: the number of locations (excluding households) in the simulation</param>
+/// <param name="contacts_desired_lookup">Input: pointer to an array containing the number of contacts desired for each hour, in packed form</param>
+/// <param name="number_hours">Input: The number of hours stored in the multi-hour array, probably NUM_WEEKEND_ERRAND_HOURS or NUM_WEEKDAY_ERRAND_HOURS</param>
+/// <param name="output_location_offset">Output: the offset from the start of the array to the first person at this location for this hour</param>
+/// <param name="output_location_count">Output: the number of people at this location for this hour</param>
+/// <param name="output_contacts_desired">Output: the number of contacts we will make this hour</param>
 __device__ void device_lookupLocationData_multiHour(int myPos, int hour, int * location_lookup_arr, int * loc_offset_arr, int number_locations, int * contacts_desired_lookup, int number_hours, int * output_loc_offset, int * output_loc_count, int * output_contacts_desired)
 {
 	//infected locations and contacts_desired are stored packed, eg for infected_idx 1,2
@@ -3850,11 +3920,14 @@ __device__ void device_lookupLocationData_multiHour(int myPos, int hour, int * l
 	(*output_loc_count) = loc_offset_arr[loc_offset_position + 1] - loc_offset_arr[loc_offset_position];
 }
 
-__device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_offset, int loc_count, int rand_val, kval_t desired_kval, int * location_offsets, int * location_people_arr, int * output_infector_idx_arr, int * output_victim_idx_arr, int * output_kval_arr)
+
+__device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_offset, int loc_count, unsigned int rand_val, int desired_kval, int * location_people_arr, int * output_infector_idx_arr, int * output_victim_idx_arr, int * output_kval_arr)
 {
+	//start with null data
 	int victim_idx = NULL_PERSON_INDEX;
 	int contact_type = CONTACT_TYPE_NONE;
 
+	//if there is only one person, keep the null data, else select one other person who is not our infector
 	if(loc_count > 1)
 	{
 		int victim_offset = rand_val % loc_count;	//select a random person between 0 and loc_count
@@ -3873,12 +3946,14 @@ __device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_
 		contact_type = desired_kval;
 	}
 
+	//write data into output memory locations
 	(*output_infector_idx_arr) = infector_idx;
 	(*output_victim_idx_arr) = victim_idx;
 	(*output_kval_arr) = contact_type;
 }
 
-__device__ void device_nullFillContacts(int myIdx, int * output_infector_idx, int * output_victim_idx, int * output_kval)
+//write a null contact to the memory locations
+__device__ void device_nullFillContact(int myIdx, int * output_infector_idx, int * output_victim_idx, int * output_kval)
 {
 	(*output_infector_idx) = myIdx;
 	(*output_victim_idx) = NULL_PERSON_INDEX;
@@ -3896,6 +3971,16 @@ __device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
 	(*output_location) = location_arr[offset];
 }
 
+__device__ void device_fishWeekendErrandContactsDesired(unsigned int rand_val, int * inf_contacts_desired_arr)
+{
+	//6 possible permutations of assignment, get an int between 0 and 5 inclusive
+	int contacts_profile = rand_val % 6;
+
+	//copy the three values to the output array
+	inf_contacts_desired_arr[0] = weekend_errand_contact_assignments[contacts_profile][0];
+	inf_contacts_desired_arr[1] = weekend_errand_contact_assignments[contacts_profile][1];
+	inf_contacts_desired_arr[2] = weekend_errand_contact_assignments[contacts_profile][2];
+}
 
 inline const char * lookup_contact_type(int contact_type)
 {
@@ -3918,7 +4003,7 @@ inline const char * lookup_contact_type(int contact_type)
 	}
 }
 
-const char * lookup_workplace_type(int workplace_type)
+inline const char * lookup_workplace_type(int workplace_type)
 {
 	switch(workplace_type)
 	{

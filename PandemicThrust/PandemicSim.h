@@ -39,6 +39,7 @@ public:
 	void setup_initialInfected();
 	void setup_buildFixedLocations();
 	void setup_sizeGlobalArrays();
+	void setup_initWeekendErrandSearchArrays();
 
 	void setup_scaleSimulation();
 	void setup_setCudaTopology();
@@ -201,6 +202,11 @@ public:
 
 	vec_t infected_output_offsets;
 
+	//not implemented yet
+	vec_t errand_locationIds;
+	vec_t errand_locationHours;
+	vec_t errand_locationOffsets_multiHour;
+
 	//DEBUG: these can be used to dump kernel internal data
 	thrust::device_vector<float> debug_float1;
 	thrust::device_vector<float> debug_float2;
@@ -234,7 +240,7 @@ __global__ void makeContactsKernel_weekday(int num_infected, int * infected_inde
 										   int number_locations, 
 										   int * output_infector_arr, int * output_victim_arr, int * output_kval_arr,
 										   int rand_offset);
-__device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_offset, int loc_count, int rand_val, kval_t desired_kval, int * location_offsets, int * location_people_arr, int * output_infector_idx_arr, int * output_victim_idx_arr, int * output_kval_arr);
+__device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_offset, int loc_count, unsigned int rand_val, int desired_kval, int * location_people_arr, int * output_infector_idx_arr, int * output_victim_idx_arr, int * output_kval_arr);
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_offset, int * loc_count);
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_max_contacts_arr, int * loc_offset, int * loc_count, int * loc_max_contacts);
 __device__ void device_lookupLocationData_multiHour(int myPos, int hour, int * location_lookup_arr, int * loc_offset_arr, int number_locations, int * contacts_desired_lookup, int number_hours, int * output_loc_offset, int * output_loc_count, int * output_contacts_desired);
@@ -242,6 +248,10 @@ __device__ void device_lookupLocationData_multiHour(int myPos, int hour, int * l
 __device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
 													int * contacts_desired_arr, int * hour_arr, int * location_arr, 
 													int * output_contacts_desired, int * output_hour, int * output_location);
+
+__device__ void device_nullFillContact(int myIdx, int * output_infector_idx, int * output_victim_idx, int * output_kval);
+__device__ void device_fishWeekendErrandContactsDesired(unsigned int rand_val, int * inf_contacts_desired_arr);
+__device__ void device_lookupLocationData_weekendErrand(int location, int hour, int * loc_offset_arr, int number_locations, int * output_location_offset, int * output_location_count);
 
 inline const char * lookup_contact_type(int contact_type);
 inline const char * lookup_workplace_type(int workplace_type);
