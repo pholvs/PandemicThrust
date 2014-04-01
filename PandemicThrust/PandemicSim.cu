@@ -1713,8 +1713,10 @@ void PandemicSim::weekday_scatterAfterschoolLocations(vec_t * people_locs)
 }
 
 
-__device__ int device_fishWeekdayErrand(float yval)
+__device__ void device_fishWeekdayErrand(int rand_val, int * output_destination)
 {
+	float yval = (float) rand_val / UNSIGNED_MAX;
+
 	int row = FIRST_WEEKDAY_ERRAND_ROW; //which business type
 
 	while(yval > weekday_errand_pdf[row] && row < (NUM_BUSINESS_TYPES - 1))
@@ -1731,7 +1733,7 @@ __device__ int device_fishWeekdayErrand(float yval)
 	int offset = business_type_count_offset[row];
 	business_num += offset;
 
-	return business_num;
+	*output_destination = business_num;
 }
 
 //gets a random weekday errand location for each adult, where N = number_adults
@@ -1753,11 +1755,9 @@ __global__ void get_weekday_errand_locations_kernel(int * adult_indexes_arr, int
 		u.c = threefry2x32(tf_ctr, tf_k);
 
 		//fish out a business type
-		float yval = (float) u.i[0] / UNSIGNED_MAX;
-		int errand_destination = device_fishWeekdayErrand(yval);
-
 		int output_offset = adult_indexes_arr[myPos];
-		output_arr[output_offset] = errand_destination;
+		int * output_destination = &output_arr[output_offset];
+		device_fishWeekdayErrand(u.i[0],output_destination);
 
 		//TODO:  use other rand number
 	}
@@ -3528,6 +3528,72 @@ void PandemicSim::setup_initWeekendErrandSearchArrays()
 	}
 }
 
+void PandemicSim::doWeekday_wholeDay()
+{
+	if(USE_KAPPA_VALUES == 0)
+		throw std::runtime_error(std::string("USE_KAPPA_VALUES must be set to 1 to use whole-day contacts"));
+
+	weekday_scatterAfterschoolLocations_wholeDay(&errand_people_destinations);
+	weekday_scatterErrandDestinations_wholeDay(&errand_people_destinations);
+
+	thrust::sequence(errand_people_table.begin(), errand_people_table.begin() + number_people);
+	thrust::sequence(errand_people_table.begin() + number_people, errand_people_table.begin() + number_people + number_people);
+
+	//copy the errand destinations into some scratch space, here weekend_hours
+	thrust::copy_n(errand_people_destinations.begin(), number_people * 2, errand_people_weekendHours.begin());
+
+	//sort the first number_people entries by the errand destinations in scratch space
+	thrust::sort_by_key(
+		errand_people_weekendHours.begin(), 
+		errand_people_weekendHours.begin() + number_people, 
+		errand_people_table.begin());
+
+	//sort the second number_errand people
+	thrust::sort_by_key(
+		errand_people_weekendHours.begin() + number_people, 
+		errand_people_weekendHours.begin() + number_people + number_people, 
+		errand_people_table.begin() + number_people);
+
+	//TODO: finish
+}
+
+void PandemicSim::weekday_scatterAfterschoolLocations_wholeDay(d_vec * people_locs)
+{
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "weekday_scatterAfterschoolLocations_wholeDay");
+
+	int * child_indexes_ptr = thrust::raw_pointer_cast(people_child_indexes.data());
+	int * output_arr_ptr = thrust::raw_pointer_cast(people_locs->data());
+
+	kernel_assignAfterschoolLocations_wholeDay<<<cuda_blocks,cuda_threads>>>(child_indexes_ptr,output_arr_ptr, number_children,number_people,rand_offset);
+	rand_offset += number_children / 4;
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day,number_children);
+}
+
+void PandemicSim::weekday_scatterErrandDestinations_wholeDay(d_vec * people_locs)
+{
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "weekday_scatterAfterschoolLocations_wholeDay");
+
+	int * adult_indexes_ptr = thrust::raw_pointer_cast(people_adult_indexes.data());
+	int * output_arr_ptr = thrust::raw_pointer_cast(people_locs->data());
+
+	kernel_assignErrandLocations_wholeDay<<<cuda_blocks,cuda_threads>>>(adult_indexes_ptr, number_adults, number_people ,output_arr_ptr, rand_offset);
+	rand_offset += number_adults / 2;
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day,number_adults);
+}
+
+void PandemicSim::doWeekend_wholeDay()
+{
+
+}
+
+
+
 
 inline void debug_print(char * message)
 {
@@ -3966,9 +4032,9 @@ __device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
 {
 	int offset = (myPos * NUM_WEEKEND_ERRANDS) + hour_slot;
 
-	(*output_contacts_desired) = contacts_desired_arr[offset];
-	(*output_hour) = hour_arr[offset];
-	(*output_location) = location_arr[offset];
+	*output_contacts_desired = contacts_desired_arr[offset];
+	*output_hour = hour_arr[offset];
+	*output_location = location_arr[offset];
 }
 
 __device__ void device_fishWeekendErrandContactsDesired(unsigned int rand_val, int * inf_contacts_desired_arr)
@@ -3981,6 +4047,92 @@ __device__ void device_fishWeekendErrandContactsDesired(unsigned int rand_val, i
 	inf_contacts_desired_arr[1] = weekend_errand_contact_assignments[contacts_profile][1];
 	inf_contacts_desired_arr[2] = weekend_errand_contact_assignments[contacts_profile][2];
 }
+
+__global__ void kernel_assignAfterschoolLocations_wholeDay(int * child_indexes_arr, int * output_array, int number_children, int number_people, int rand_offset)
+{
+	threefry2x64_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} u;
+
+	//get the number of afterschool locations and their offset in the business array
+	int afterschool_count = business_type_count[BUSINESS_TYPE_AFTERSCHOOL];
+	int afterschool_offset = business_type_count_offset[BUSINESS_TYPE_AFTERSCHOOL];
+
+	//for each child
+	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < number_children / 4; myPos += gridDim.x * blockDim.x)
+	{
+		threefry2x64_ctr_t tf_ctr = {{((long) myPos + rand_offset), ((long) myPos + rand_offset)}};
+		u.c = threefry2x64(tf_ctr, tf_k);
+
+		int myChildPos = myPos * 4;
+		int myIdx = child_indexes_arr[myChildPos];
+		device_assignAfterschoolLocation_wholeDay(u.i[0], number_people, afterschool_count, afterschool_offset, output_array + myIdx);
+
+		if(myChildPos + 1 < number_children)
+		{
+			myIdx = child_indexes_arr[myChildPos + 1];
+			device_assignAfterschoolLocation_wholeDay(u.i[1],number_people, afterschool_count, afterschool_offset, output_array + myIdx);
+		}
+		if(myChildPos + 2 < number_children)
+		{
+			myIdx = child_indexes_arr[myChildPos + 2];
+			device_assignAfterschoolLocation_wholeDay(u.i[2],number_people, afterschool_count, afterschool_offset,output_array + myIdx);
+		}
+		if(myChildPos + 3 < number_children)
+		{
+			myIdx = child_indexes_arr[myChildPos + 3];
+			device_assignAfterschoolLocation_wholeDay(u.i[3], number_people, afterschool_count, afterschool_offset, output_array + myIdx);
+		}
+	}
+}
+
+__device__ void device_assignAfterschoolLocation_wholeDay(unsigned int rand_val, int number_people, int afterschool_count, int afterschool_offset, int * output_schedule)
+{
+	//turn random number into fraction between 0 and 1
+	float frac = (float) rand_val / UNSIGNED_MAX;
+
+	int ret = frac * afterschool_count;		//find which afterschool location they're at, between 0 <= X < count
+	ret = ret + afterschool_offset;		//add the offset to the first afterschool location
+
+	*output_schedule = ret;					//store in the indicated output location
+	*(output_schedule + number_people) = ret;	//children go to the same location for both hours, so put it in their second errand slot
+}
+
+
+__global__ void kernel_assignErrandLocations_wholeDay(int * adult_indexes_arr, int number_adults, int number_people, int * output_arr, int rand_offset)
+{
+	threefry2x64_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} u;
+
+	//for each adult
+	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < number_adults / 2; myPos += gridDim.x * blockDim.x)
+	{
+		threefry2x64_ctr_t tf_ctr = {{((long) myPos + rand_offset), ((long) myPos + rand_offset)}};
+		u.c = threefry2x64(tf_ctr, tf_k);
+
+		int myAdultPos = myPos * 2;
+		int myAdultIdx = adult_indexes_arr[myAdultPos];
+
+		//fish out a destination
+		device_fishWeekdayErrand(u.i[0], &output_arr[myAdultIdx]);	//for adult index i, output the destination to arr[i]
+		device_fishWeekdayErrand(u.i[1], &output_arr[myAdultIdx + number_people]);	//output a second destination to arr[i] for the second hour
+
+		//if still in bounds, assign another person
+		myAdultPos++;
+		if(myAdultPos< number_adults)
+		{
+			myAdultIdx = adult_indexes_arr[myAdultPos];
+			device_fishWeekdayErrand(u.i[2], &output_arr[myAdultIdx]);
+			device_fishWeekdayErrand(u.i[3], &output_arr[myAdultIdx + number_people]);
+		}
+	}
+}
+
 
 inline const char * lookup_contact_type(int contact_type)
 {

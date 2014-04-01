@@ -212,6 +212,15 @@ public:
 	thrust::device_vector<float> debug_float2;
 	thrust::device_vector<float> debug_float3;
 	thrust::device_vector<float> debug_float4;
+
+	//new whole-day contact methods
+
+	void doWeekday_wholeDay();
+	void weekday_scatterAfterschoolLocations_wholeDay(d_vec * people_locs);
+	void weekday_scatterErrandDestinations_wholeDay(d_vec * people_locs);
+	void calcLocationOffsets_wholeDay(int number_hours);
+
+	void doWeekend_wholeDay();
 };
 
 #define day_of_week() (current_day % 7)
@@ -230,6 +239,9 @@ int roundHalfUp_toInt(double d);
 
 
 struct weekend_getter;
+__global__ void get_afterschool_locations_kernel(int * child_indexes_arr, int * output_array, int number_children, int rand_offset);
+__device__ void device_fishWeekdayErrand(int rand_val, int * output_destination);
+
 __global__ void weekend_errand_hours_kernel(int * hours_array, int N, int rand_offset);
 __global__ void makeContactsKernel_weekday(int num_infected, int * infected_indexes, int * infected_age,
 										   int * household_lookup, int * household_offsets, int * household_people,
@@ -252,6 +264,12 @@ __device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
 __device__ void device_nullFillContact(int myIdx, int * output_infector_idx, int * output_victim_idx, int * output_kval);
 __device__ void device_fishWeekendErrandContactsDesired(unsigned int rand_val, int * inf_contacts_desired_arr);
 __device__ void device_lookupLocationData_weekendErrand(int location, int hour, int * loc_offset_arr, int number_locations, int * output_location_offset, int * output_location_count);
+
+__global__ void kernel_assignAfterschoolLocations_wholeDay(int * child_indexes_arr, int * output_array, int number_children, int number_people, int rand_offset);
+__device__ void device_assignAfterschoolLocation_wholeDay(unsigned int rand_val, int number_people, int afterschool_count, int afterschool_offset, int * output_schedule);
+
+__global__ void kernel_assignErrandLocations_wholeDay(int * adult_indexes_arr, int number_adults, int number_people, int * output_arr, int rand_offset);
+
 
 inline const char * lookup_contact_type(int contact_type);
 inline const char * lookup_workplace_type(int workplace_type);
