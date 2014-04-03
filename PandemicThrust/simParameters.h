@@ -33,4 +33,9 @@ const int NUM_CONTACT_TYPES = 6;
 
 const int NULL_PERSON_INDEX = -1;
 
+const int AGE_5 = 0;
+const int AGE_9 = 1;
+const int AGE_14 = 2;
+const int AGE_17 = 3;
+const int AGE_22 = 4;
 const int AGE_ADULT = 5;
