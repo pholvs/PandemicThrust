@@ -12,10 +12,10 @@
 
 #pragma region settings
 
-#define USE_KAPPA_VALUES 1
+#define debug_null_fill_daily_arrays 1
 
 //Simulation profiling master control - low performance overhead
-#define PROFILE_SIMULATION 1
+const int PROFILE_SIMULATION = 1;
 
 //output status messages to console?  Slows things down
 #define CONSOLE_OUTPUT 1
@@ -50,7 +50,6 @@
 //low overhead
 #define debug_log_function_calls 1
 
-#define debug_null_fill_daily_arrays 1
 
 #pragma endregion settings
 
@@ -69,10 +68,11 @@ __device__ __constant__ int business_type_count_offset[NUM_BUSINESS_TYPES];			//
 __device__ __constant__ float weekday_errand_pdf[NUM_BUSINESS_TYPES];				//stores PDF for weekday errand destinations
 __device__ __constant__ float weekend_errand_pdf[NUM_BUSINESS_TYPES];				//stores PDF for weekend errand destinations
 __device__ __constant__ float infectiousness_profile[CULMINATION_PERIOD];			//stores viral shedding profiles
-__device__ __constant__ int weekend_errand_contact_assignments[6][3];				//stores permutations of 2 contacts between the 3 hours
 
 __device__ __constant__ kval_t kval_lookup[NUM_CONTACT_TYPES];
 __device__ __constant__ int weekday_people_exclusiveScan[NUM_WEEKDAY_ERRAND_HOURS + 1];
+
+__device__ __constant__ int business_type_max_contacts[NUM_BUSINESS_TYPES];
 
 __device__ __constant__ int weekend_errand_contact_assignments_wholeDay[6][2];
 __device__ __constant__ int weekday_errand_contact_assignments_wholeDay[3][2];
@@ -99,10 +99,13 @@ int h_workplace_max_contacts[NUM_BUSINESS_TYPES];
 float h_weekday_errand_pdf[NUM_BUSINESS_TYPES];
 float h_weekend_errand_pdf[NUM_BUSINESS_TYPES];
 float h_infectiousness_profile[CULMINATION_PERIOD];
-int h_weekend_errand_contact_assignments[6][3];
+
+int h_weekday_errand_contact_assignments_wholeDay[3][2];
 int h_weekend_errand_contact_assignments_wholeDay[6][2];
 
 float h_infectiousness_profile_all[6][CULMINATION_PERIOD];
+
+
 
 #define CHILD_DATA_ROWS 5
 float child_CDF[CHILD_DATA_ROWS];
@@ -114,8 +117,8 @@ int hh_child_count[HH_TABLE_ROWS];
 float hh_type_cdf[HH_TABLE_ROWS];
 
 //the first row of the PDF with a value > 0
-#define FIRST_WEEKDAY_ERRAND_ROW 9
-#define FIRST_WEEKEND_ERRAND_ROW 9
+const int FIRST_WEEKDAY_ERRAND_ROW = 9;
+const int FIRST_WEEKEND_ERRAND_ROW = 9;
 
 
 PandemicSim::PandemicSim() 
@@ -179,6 +182,12 @@ void PandemicSim::setupSim()
 	//copy everything down to the GPU
 	setup_pushDeviceData();
 
+	if(log_contacts)
+	{
+		debug_sizeHostArrays();
+		debug_copyFixedData();
+	}
+
 	if(PROFILE_SIMULATION)
 	{
 		profiler.endFunction(-1, number_people);
@@ -187,7 +196,6 @@ void PandemicSim::setupSim()
 	if(debug_log_function_calls)
 		debug_print("simulation setup complete");
 }
-
 
 
 void PandemicSim::logging_openOutputStreams()
@@ -207,7 +215,7 @@ void PandemicSim::logging_openOutputStreams()
 	if(log_contacts)
 	{
 		fContacts = fopen("../debug_contacts.csv", "w");
-		fprintf(fContacts, "current_day, i, contact_type, infector_idx, victim_idx, infector_loc, victim_loc, infector_found, victim_found\n");
+		fprintf(fContacts, "current_day, i, infector_idx, victim_idx, contact_type, infector_loc, victim_loc, locs_matched\n");
 	}
 
 	if(log_contact_kernel_setup)
@@ -234,7 +242,6 @@ void PandemicSim::logging_openOutputStreams()
 
 	
 }
-
 
 void PandemicSim::setup_loadParameters()
 {
@@ -417,30 +424,18 @@ void PandemicSim::setup_loadParameters()
 	hh_type_cdf[8] = 1.0f;
 
 	//store all permutations of contact assignments
-	h_weekend_errand_contact_assignments[0][0] = 2;
-	h_weekend_errand_contact_assignments[0][1] = 0;
-	h_weekend_errand_contact_assignments[0][2] = 0;
 
-	h_weekend_errand_contact_assignments[1][0] = 0;
-	h_weekend_errand_contact_assignments[1][1] = 2;
-	h_weekend_errand_contact_assignments[1][2] = 0;
+	//number of contacts made in each hour
+	h_weekday_errand_contact_assignments_wholeDay[0][0] = 2;
+	h_weekday_errand_contact_assignments_wholeDay[0][1] = 0;
 
-	h_weekend_errand_contact_assignments[2][0] = 0;
-	h_weekend_errand_contact_assignments[2][1] = 0;
-	h_weekend_errand_contact_assignments[2][2] = 2;
+	h_weekday_errand_contact_assignments_wholeDay[1][0] = 0;
+	h_weekday_errand_contact_assignments_wholeDay[1][1] = 2;
 
-	h_weekend_errand_contact_assignments[3][0] = 1;
-	h_weekend_errand_contact_assignments[3][1] = 1;
-	h_weekend_errand_contact_assignments[3][2] = 0;
+	h_weekday_errand_contact_assignments_wholeDay[2][0] = 1;
+	h_weekday_errand_contact_assignments_wholeDay[2][1] = 1;
 
-	h_weekend_errand_contact_assignments[4][0] = 1;
-	h_weekend_errand_contact_assignments[4][1] = 0;
-	h_weekend_errand_contact_assignments[4][2] = 1;
-
-	h_weekend_errand_contact_assignments[5][0] = 0;
-	h_weekend_errand_contact_assignments[5][1] = 1;
-	h_weekend_errand_contact_assignments[5][2] = 1;
-	
+	//DIFFERENT FORMAT: hours each of the 2 contacts are made in
 	//2 contacts in hour 0
 	h_weekend_errand_contact_assignments_wholeDay[0][0] = 0;
 	h_weekend_errand_contact_assignments_wholeDay[0][1] = 0;
@@ -573,6 +568,10 @@ void PandemicSim::setup_pushDeviceData()
 		business_type_count_offset,
 		h_workplace_type_offset,
 		sizeof(int) * NUM_BUSINESS_TYPES);
+	cudaMemcpyToSymbol(
+		business_type_max_contacts,
+		h_workplace_max_contacts,
+		sizeof(int) * NUM_BUSINESS_TYPES);
 
 	//weekday+weekend errand PDFs
 	cudaMemcpyToSymbol(
@@ -596,17 +595,16 @@ void PandemicSim::setup_pushDeviceData()
 		BASE_REPRODUCTION_HOST,
 		sizeof(float) * STRAIN_COUNT);
 
-	//weekend errand contacts_desired assignments
-	cudaMemcpyToSymbol(
-		weekend_errand_contact_assignments,
-		h_weekend_errand_contact_assignments,
-		sizeof(int) * 6 * 3);
-
 	//alternate weekend contacts_desired assignment mode
 	cudaMemcpyToSymbol(
 		weekend_errand_contact_assignments_wholeDay,
 		h_weekend_errand_contact_assignments_wholeDay,
 		sizeof(int) * 6 * 2);
+
+	cudaMemcpyToSymbol(
+		weekday_errand_contact_assignments_wholeDay,
+		h_weekday_errand_contact_assignments_wholeDay,
+		sizeof(int) * 3 * 2);
 
 	//seeds
 	cudaMemcpyToSymbol(
@@ -851,9 +849,6 @@ void PandemicSim::setup_buildFixedLocations()
 		people_households,
 		&household_offsets,
 		number_people, number_households);
-
-	household_max_contacts.resize(number_households);
-	thrust::fill(household_max_contacts.begin(), household_max_contacts.begin() + number_households, 2);
 
 	///////////////////////////////////////
 	//work/////////////////////////////////
@@ -1234,191 +1229,6 @@ void PandemicSim::dump_infected_info()
 	fflush(fDebug);
 }
 
-//generate one weekday's worth of contacts
-void PandemicSim::doWeekday()
-{
-	//tests household and workplaces for each infected person
-	if(0)
-		test_locs();
-
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "doWeekday");
-
-	//make workplace contacts
-	makeContacts_byLocationMax(
-		"workplace",
-		&infected_indexes, infected_count,
-		&workplace_people, &workplace_max_contacts,
-		&workplace_offsets, number_workplaces, &people_workplaces);
-
-	if(debug_log_function_calls)
-		debug_print("workplace contacts complete"); 
-
-	//do afterschool for children, and errands for adults
-	doWeekdayErrands();
-
-	if(debug_log_function_calls)
-		debug_print("errand contacts complete");
-
-	//make household contacts
-	makeContacts_byLocationMax(
-		"household",
-		&infected_indexes, infected_count,
-		&household_people, &household_max_contacts,
-		&household_offsets, number_households,
-		&people_households);
-
-	if(debug_log_function_calls)
-		debug_print("household contacts complete");
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-}
-
-//Makes one day of contacts according to weekend schedule
-void PandemicSim::doWeekend()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "doWeekend");
-
-	//everyone makes household contacts
-	makeContacts_byLocationMax(
-		"household",
-		&infected_indexes, infected_count,
-		&household_people, &household_max_contacts,
-		&household_offsets, number_households,
-		&people_households); //hh
-
-	//each person will make errand contacts on 3 of 10 possible errand hours
-	doWeekendErrands();
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-}
-
-//generates contacts for the 6 errand hours on a weekend
-void PandemicSim::doWeekendErrands()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "doWeekendErrands");
-
-	//each person gets 3 errands
-	int num_weekend_errands_total = NUM_WEEKEND_ERRANDS * number_people;
-
-	//allocate arrays to store the errand locations
-
-	//copy people's IDs and their 3 unique hours
-	weekend_copyPeopleIndexes(&errand_people_table);
-	weekend_generateThreeUniqueHours(&errand_people_weekendHours);
-	weekend_generateErrandDestinations(&errand_people_destinations);
-	cudaDeviceSynchronize();
-
-	//extract a list of infected hours and destinations
-	vec_t infected_hour_offsets(NUM_WEEKEND_ERRAND_HOURS + 1);
-
-	//set up the infected for the errands
-	//copies the errand hours and destinations for infected into a separate array,
-	//finds the number of infected making an errand each hour, and assigns the number of contacts desired
-	weekendErrand_doInfectedSetup(
-		&errand_people_weekendHours, &errand_people_destinations,
-		&errand_infected_indexesPresent, &errand_infected_locations, &errand_infected_ContactsDesired,
-		&infected_hour_offsets);
-
-	//now sort the errand_people array into a large multi-hour location table
-	thrust::sort_by_key(
-		thrust::make_zip_iterator(thrust::make_tuple(errand_people_weekendHours.begin(), errand_people_destinations.begin())),	//key.begin
-		thrust::make_zip_iterator(thrust::make_tuple(errand_people_weekendHours.end(), errand_people_destinations.end())),		//key.end
-		errand_people_table.begin(),
-		Pair_SortByFirstThenSecond_struct());									//data
-
-	//count the number of people running errands on each hour
-	//compute as count and offset for each hour
-	vec_t errand_people_hour_offsets(NUM_WEEKEND_ERRAND_HOURS + 1);
-	thrust::lower_bound(
-		errand_people_weekendHours.begin(),		//data.first
-		errand_people_weekendHours.end(),			//data.last
-		thrust::counting_iterator<int>(0),		//search_val.first
-		thrust::counting_iterator<int>(NUM_WEEKEND_ERRAND_HOURS), //search_val.last
-		errand_people_hour_offsets.begin());
-	errand_people_hour_offsets[NUM_WEEKEND_ERRAND_HOURS] = num_weekend_errands_total;
-
-	if(print_location_info || log_location_info){
-//		printf("dumping weekend errand setup...\n");
-//		cudaDeviceSynchronize();
-//		dump_weekend_errands(errand_people, errand_hours, errand_locations, 5, number_people);
-	}
-
-	//for each hour, set up location arrays and make contacts
-	for(int hour = 0; hour < NUM_WEEKEND_ERRAND_HOURS; hour++)
-	{
-		if(debug_log_function_calls)
-		{
-			fprintf(fDebug, "---------------------\nbeginning errand hour %d\n---------------------\n", hour);
-			fflush(fDebug);
-		}
-
-		//get fancy string for debug output
-		std::ostringstream s;
-		s << "weekend_errand_";
-		s << hour;
-		std::string str = s.str();
-
-		int people_offset = errand_people_hour_offsets[hour];		//index of first person for this hour
-		int people_count = errand_people_hour_offsets[hour+1] - errand_people_hour_offsets[hour];		//number of people out on an errand this hour
-
-		int infected_offset = infected_hour_offsets[hour];		//offset into infected_present of first infected person making contacts this hour
-		int infected_present_count = infected_hour_offsets[hour+1] - infected_offset;	//number of infected making contacts this hour
-
-		//build location offset table
-		thrust::counting_iterator<int> count_iterator(0);
-		thrust::lower_bound(
-			errand_people_destinations.begin() + people_offset,
-			errand_people_destinations.begin() + people_offset + people_count,
-			count_iterator,
-			count_iterator + number_workplaces,
-			errand_locationOffsets.begin());
-		errand_locationOffsets[number_workplaces] = people_count;
-		
-		clipContactsDesired_byLocationCount(
-			errand_infected_locations.data() + infected_offset,		//infected locations for this hour
-			infected_count, &errand_locationOffsets,	//number of infected and the location offset table
-			errand_infected_ContactsDesired.data() + infected_offset);
-		
-		launchContactsKernel(
-			str.c_str(),
-			errand_infected_indexesPresent.data() + infected_offset,		//iterator to first infected index
-			errand_infected_locations.data() + infected_offset,		//iterator to first infected destination
-			errand_infected_ContactsDesired.data() + infected_offset,	//iterator to first infected contacts_desired
-			infected_present_count,									//number of infected present
-			thrust::raw_pointer_cast(errand_people_table.data() + people_offset),	//pointer to first person in the location_people table
-			&errand_locationOffsets,		//pointer to location offset table
-			number_workplaces);		//number_locations
-
-		//validate contacts
-		if(print_contacts || log_contacts)
-		{
-			int contacts_this_hour = thrust::reduce(
-				errand_infected_ContactsDesired.begin() + infected_offset, 
-				errand_infected_ContactsDesired.begin() + infected_offset + infected_present_count);
-
-			validate_weekend_errand_contacts(
-				str.c_str(),
-				errand_people_table.data() + people_offset, 
-				errand_people_destinations.data() + people_offset,
-				people_count,
-				errand_locationOffsets.data(), number_workplaces,
-				contacts_this_hour);
-		}
-
-		if(debug_log_function_calls)
-			debug_print("errand hour complete");
-	}
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-}
-
-
 //copies ID numbers into array for weekend errands
 //we want three copies of each name, spaced out in collation style
 __global__ void copy_weekend_errand_indexes_kernel(int * id_array, int N)
@@ -1433,7 +1243,7 @@ __global__ void copy_weekend_errand_indexes_kernel(int * id_array, int N)
 
 //copies indexes 3 times into array, i.e. for IDS 1-3 produces array:
 // 1 2 3 1 2 3 1 2 3
-void PandemicSim::weekend_copyPeopleIndexes(vec_t * index_arr)
+void PandemicSim::weekend_copyPeopleIndexes_wholeDay(vec_t * index_arr)
 {
 	int * index_arr_ptr = thrust::raw_pointer_cast(index_arr->data());
 	copy_weekend_errand_indexes_kernel<<<cuda_blocks, cuda_threads>>>(index_arr_ptr, number_people);
@@ -1484,7 +1294,7 @@ __global__ void weekend_errand_hours_kernel(int * hours_array, int N, int rand_o
 
 //gets 3 DIFFERENT errand hours for each person, collated order
 //i.e. 1 2 3 1 2 3 1 2 3
-void PandemicSim::weekend_generateThreeUniqueHours(vec_t * hours_array)
+void PandemicSim::weekend_generateThreeUniqueHours_wholeDay(vec_t * hours_array)
 {
 	int * loc_arr_ptr = thrust::raw_pointer_cast(hours_array->data());
 	weekend_errand_hours_kernel<<<cuda_blocks, cuda_threads>>>(loc_arr_ptr, number_people, rand_offset);
@@ -1549,7 +1359,7 @@ __global__ void weekend_errand_locations_kernel(int * location_array, int N, int
 
 //gets 3 errand locations for each person according to PDF with collated order
 //i.e. 1 2 3 1 2 3 1 2 3
-void PandemicSim::weekend_generateErrandDestinations(vec_t * location_array)
+void PandemicSim::weekend_generateErrandDestinations_wholeDay(vec_t * location_array)
 {
 	const int RNG_COUNTS_CONSUMED = 2;
 	int * loc_arr_ptr = thrust::raw_pointer_cast(location_array->data());
@@ -1557,158 +1367,6 @@ void PandemicSim::weekend_generateErrandDestinations(vec_t * location_array)
 	rand_offset += number_people * RNG_COUNTS_CONSUMED;
 }
 
-//prints some of the weekend errands to console
-void PandemicSim::dump_weekend_errands(d_vec people, d_vec hours, d_vec locations, int num_to_print, int N)
-{
-	h_vec h_people = people;
-	h_vec h_hours = hours;
-	h_vec h_locs = locations;
-
-	for(int i = 0; i < num_to_print; i++)
-	{
-		printf("i: %d\tidx: %6d\thour: %d\tloc: %3d\n",
-			i, h_people[i], h_hours[i], h_locs[i]);
-		printf("i: %d\tidx: %6d\thour: %d\tloc: %3d\n",
-			i, h_people[i + N], h_hours[i + N], h_locs[i + N]);
-		printf("i: %d\tidx: %6d\thour: %d\tloc: %3d\n",
-			i, h_people[i + (N + N)], h_hours[i + (N + N)], h_locs[i + (N + N)]);
-	}
-}
-
-//helper function that will automatically generate a list of contacts_desired
-//uses the max_contacts number for each location
-void PandemicSim::makeContacts_byLocationMax(const char * hour_string,
-										vec_t *infected_list, int infected_list_count,
-										vec_t *loc_people, vec_t *loc_max_contacts,
-										vec_t *loc_offsets, int num_locs,
-										vec_t *people_lookup)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "makeContacts_byLocationMax");
-
-	//get the locations of infected people
-	//ASSUMES: people_locations[i] contains the location of person index i (all people are present)
-	thrust::gather(
-		infected_list->begin(),	//map.begin
-		infected_list->begin() + infected_list_count,		//map.end
-		people_lookup->begin(),
-		errand_infected_locations.begin());
-
-	//get contacts desired for each infected person
-	//return max_contacts, or count if count < max_contacts, or 0 if count == 1
-	buildContactsDesired_byLocationMax(
-		&errand_infected_locations, infected_list_count,
-		loc_offsets, loc_max_contacts,
-		&errand_infected_ContactsDesired);
-
-	//get total number of contacts this hour 
-	int num_new_contacts = thrust::reduce(errand_infected_ContactsDesired.begin(), errand_infected_ContactsDesired.begin() + infected_list_count);
-
-	//get raw pointer into the location table
-	int * location_people_ptr = thrust::raw_pointer_cast((*loc_people).data());
-
-	//make contacts
-	launchContactsKernel(
-		hour_string,
-		infected_list, &errand_infected_locations, 
-		&errand_infected_ContactsDesired, infected_list_count,
-		location_people_ptr, loc_offsets, num_locs);
-
-	//validate the contacts
-	if(log_contacts || print_contacts)
-	{
-		validate_contacts(hour_string, loc_people, people_lookup, loc_offsets, num_new_contacts);
-	}
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-}
-//method to set up afterschool activities and errands and make contacts
-//children go to one randomly selected afterschool activity for 2 hours
-//adults will go to two randomly selected errands, and make 2 contacts split between them
-void PandemicSim::doWeekdayErrands()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "doWeekdayErrands");
-
-	//generate child afterschool activities and first set of adult errands
-	weekday_scatterAfterschoolLocations(&errand_people_destinations);
-	weekday_scatterErrandLocations(&errand_people_destinations); 
-	
-	//generate list of IDs to sort by location
-	thrust::sequence(errand_people_table.begin(), errand_people_table.begin() + number_people);
-	cudaDeviceSynchronize();
-
-	//build the location offset array
-	calcLocationOffsets(&errand_people_table, errand_people_destinations, &errand_locationOffsets, number_people, number_workplaces);
-
-	if(debug_log_function_calls)
-		debug_print("first errand locations built");
-
-	//make children errands first
-	int infected_children_count = filterInfectedByPopulationGroup("afterschool", &people_child_indexes, &errand_infected_indexesPresent);
-	makeContacts_byLocationMax(
-		"afterschool",
-		&errand_infected_indexesPresent, infected_children_count,
-		&errand_people_table, &workplace_max_contacts,
-		&errand_locationOffsets, number_workplaces,
-		&errand_people_destinations);
-
-
-	/////////////now do adult errands, first hour
-
-	//get a list of infected adults
-	int infected_adults_count = filterInfectedByPopulationGroup("errand1", &people_adult_indexes, &errand_infected_indexesPresent);
-
-	//assign 2 contacts randomly between the 2 errands - get a random int between 0 and 2
-	assign_weekday_errand_contacts(&errand_infected_ContactsDesired, infected_adults_count);
-
-	makeContacts_byContactsDesiredArray(
-		"errand1",
-		&errand_infected_indexesPresent, infected_adults_count,
-		&errand_people_table, &errand_infected_ContactsDesired,
-		&errand_locationOffsets, number_workplaces,
-		&errand_people_destinations);
-
-	if(debug_log_function_calls)
-		debug_print("first errand complete and validated");
-
-	
-	//////////////generate second errand hour and make contacts
-
-	//get new locations for adults
-	weekday_scatterErrandLocations(&errand_people_destinations);
-	cudaDeviceSynchronize();
-	
-	//rebuild the location offset array
-	thrust::sequence(errand_people_table.begin(), errand_people_table.begin() + number_people);
-	calcLocationOffsets(&errand_people_table, errand_people_destinations, &errand_locationOffsets, number_people, number_workplaces);
-
-	if(debug_log_function_calls)
-		debug_print("second errand location array built");
-
-	//reassign contacts: 2 - [contacts on first errand]
-	thrust::constant_iterator<int> constant_2_iterator(2);
-	thrust::transform(
-		constant_2_iterator,			//first.begin
-		constant_2_iterator + infected_adults_count,	//first.end
-		errand_infected_ContactsDesired.begin(),		//second.begin
-		errand_infected_ContactsDesired.begin(),		//output - in place
-		thrust::minus<int>());		
-
-	makeContacts_byContactsDesiredArray(
-		"errand2",		
-		&errand_infected_indexesPresent, infected_adults_count,
-		&errand_people_table, &errand_infected_ContactsDesired,
-		&errand_locationOffsets, number_workplaces,
-		&errand_people_destinations);
-
-	if(debug_log_function_calls)
-		debug_print("second errand complete and validated");
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-}
 
 //kernel gets a random afterschool location for each child
 __global__
@@ -1739,22 +1397,6 @@ __global__
 		int output_offset = child_indexes_arr[myPos];
 		output_array[output_offset] = ret;
 	}
-}
-
-//starts the kernel that gets a random afterschool location for each child.
-void PandemicSim::weekday_scatterAfterschoolLocations(vec_t * people_locs)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "weekday_scatterAfterschoolLocations");
-
-	int * children_idxes_ptr = thrust::raw_pointer_cast(people_child_indexes.data());
-	int * output_arr_ptr = thrust::raw_pointer_cast(people_locs->data());
-
-	get_afterschool_locations_kernel<<<cuda_blocks, cuda_threads>>>(children_idxes_ptr, output_arr_ptr, number_children, rand_offset);
-	rand_offset += number_children;
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, number_children);
 }
 
 
@@ -1808,24 +1450,6 @@ __global__ void get_weekday_errand_locations_kernel(int * adult_indexes_arr, int
 	}
 }
 
-//gets a random weekday errand location for each adult
-void PandemicSim::weekday_scatterErrandLocations(d_vec * people_lookup)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "weekday_scatterErrandLocations");
-
-	int * adult_indexes_ptr = thrust::raw_pointer_cast(people_adult_indexes.data());
-	int * output_arr_ptr = thrust::raw_pointer_cast((*people_lookup).data());
-
-	//start kernel
-	get_weekday_errand_locations_kernel<<<cuda_blocks, cuda_threads>>>(adult_indexes_ptr, output_arr_ptr, number_adults, rand_offset);
-	rand_offset += number_adults;
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, number_adults);
-}
-
-
 //for each infected adult, get the number of contacts they will make at their first errand
 //valid outputs are {0,1,2}
 __global__ void errand_contacts_kernel(int * array, int N, int global_rand_offset)
@@ -1868,392 +1492,6 @@ void PandemicSim::assign_weekday_errand_contacts(d_vec * contacts_desired, int n
 
 	if(PROFILE_SIMULATION)
 		profiler.endFunction(current_day, num_infected_adults);
-}
-
-__global__ void build_contacts_desired_kernel(
-			int *infected_location_arr, 
-			int *loc_offset_arr, int *loc_max_contacts_arr, 
-			int *contacts_desired_arr,
-			int num_infected)
-{
-	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
-	{
-		int myLoc = infected_location_arr[myPos];
-
-		//try to make maximum number of contacts possible
-		int desired = loc_max_contacts_arr[myLoc];
-		int loc_count = loc_offset_arr[myLoc + 1] - loc_offset_arr[myLoc];	//get number of people at location
-
-		if(loc_count == 1)
-			contacts_desired_arr[myPos] = 0;
-		else
-			contacts_desired_arr[myPos] = desired;
-	}
-}
-
-void PandemicSim::buildContactsDesired_byLocationMax(
-	vec_t *infected_locations, int num_infected,
-	vec_t *loc_offsets,
-	vec_t *loc_max_contacts,
-	vec_t *contacts_desired)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "buildContactsDesired_byLocationMax");
-
-	int * infected_loc_ptr = thrust::raw_pointer_cast((*infected_locations).data());
-	int * loc_offsets_ptr = thrust::raw_pointer_cast((*loc_offsets).data());
-	int * max_contacts_ptr = thrust::raw_pointer_cast((*loc_max_contacts).data());
-	int * contacts_desired_ptr = thrust::raw_pointer_cast((*contacts_desired).data());
-
-	build_contacts_desired_kernel<<<cuda_blocks,cuda_threads>>>(infected_loc_ptr,loc_offsets_ptr,max_contacts_ptr,contacts_desired_ptr,num_infected);
-	cudaDeviceSynchronize();
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, num_infected);
-}
-
-//prints some of the weekend errands to console
-void dump_weekend_errands(d_vec people, d_vec hours, d_vec locations, int num_to_print, int N)
-{
-	h_vec h_people = people;
-	h_vec h_hours = hours;
-	h_vec h_locs = locations;
-
-	for(int i = 0; i < num_to_print; i++)
-	{
-		printf("i: %d\tidx: %6d\thour: %d\tloc: %3d\n",
-			i, h_people[i], h_hours[i], h_locs[i]);
-		printf("i: %d\tidx: %6d\thour: %d\tloc: %3d\n",
-			i, h_people[i + N], h_hours[i + N], h_locs[i + N]);
-		printf("i: %d\tidx: %6d\thour: %d\tloc: %3d\n",
-			i, h_people[i + (N + N)], h_hours[i + (N + N)], h_locs[i + (N + N)]);
-	}
-}
-
-//Randomly select people at the same location as the infector as contacts
-//NOTE: assumes that a location count of 1 means that contacts_desired = 0 
-//		for anyone at that location otherwise, someone could select themselves
-__global__ void victim_index_kernel(
-	int * infector_indexes_arr, int * contacts_desired_arr, int * output_offset_arr, int * infector_loc_arr,
-	int * location_offsets_arr, int * location_people_arr,
-	int * contact_infector_arr, int * contact_idx_arr,
-	int N, int rand_offset)
-{
-	threefry2x32_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
-	union{
-		threefry2x32_ctr_t c;
-		unsigned int i[2];
-	} u;
-
-	//for each infector
-	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < N; myPos += gridDim.x * blockDim.x)
-	{
-		//info about the infector 
-		int infector_idx = infector_indexes_arr[myPos];
-		int output_offset = output_offset_arr[myPos];
-		int contacts_desired = contacts_desired_arr[myPos];	//stores number of contacts we still want
-
-		//info about the location
-		int myLoc = infector_loc_arr[myPos];
-		int loc_offset = location_offsets_arr[myLoc];
-		int loc_count = location_offsets_arr[myLoc+1] - loc_offset;	//
-
-		//get N contacts
-		while(contacts_desired > 0)
-		{
-			threefry2x32_ctr_t tf_ctr = {{output_offset + rand_offset, output_offset + rand_offset + 1}};
-			u.c = threefry2x32(tf_ctr, tf_k);
-
-			//randomly select person at location
-			int victim_offset = u.i[0] % loc_count;
-			int victim_idx = location_people_arr[loc_offset + victim_offset];
-
-			//if we have selected the infector, we need to get a different person
-			if(victim_idx == infector_idx)
-			{
-				//get the next person
-				victim_offset = (victim_offset + 1);
-				if(victim_offset == loc_count)		//wrap around if needed
-					victim_offset = 0;
-				victim_idx = location_people_arr[loc_offset + victim_offset];
-			}
-
-			//save contact into output array
-			contact_infector_arr[output_offset] = infector_idx;
-			contact_idx_arr[output_offset] = victim_idx;
-			output_offset++;	//move to next output slot
-			contacts_desired--;	//decrement contacts remaining
-
-			//R123 returns 2x32 bit numbers, so if we need another one we can use that
-			if(contacts_desired > 0)
-			{
-				//randomly select person at that location
-				victim_offset = u.i[1] % loc_count;
-				int victim_idx = location_people_arr[loc_offset + victim_offset];
-
-				//if we have selected the infector, get the next person
-				if(victim_idx == infector_idx)
-				{
-					victim_offset = (victim_offset + 1);
-					if(victim_offset == loc_count)		//wrap around
-						victim_offset = 0;
-					victim_idx = location_people_arr[loc_offset + victim_offset];
-				}
-
-				//save contact into output array
-				contact_infector_arr[output_offset] = infector_idx;
-				contact_idx_arr[output_offset] = victim_idx;
-				output_offset++;
-				contacts_desired--;
-			}
-
-		}  //end while(contacts_desired)
-	}	//end for each infector
-}
-
-//this function does final setup and then calls the kernel to make contacts
-//contacts can be validated afterwards if desired
-void PandemicSim::launchContactsKernel(
-	const char * hour_string, 
-	d_ptr infected_indexes_present_begin, d_ptr infected_locations_begin, 
-	d_ptr infected_contacts_desired_begin, int infected_present_count,
-	int * loc_people_ptr, vec_t *location_offsets, int num_locs)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "launchContactsKernel");
-
-	if(debug_log_function_calls)
-		debug_print("inside make_contacts");
-
-	//each infected needs to know where to put their contacts in the contacts array
-	thrust::exclusive_scan(
-		infected_contacts_desired_begin,
-		infected_contacts_desired_begin + infected_present_count,
-		infected_output_offsets.begin());
-
-	//how many contacts we are about to make in total
-	int new_contacts = thrust::reduce(infected_contacts_desired_begin, infected_contacts_desired_begin + infected_present_count);
-
-	//if the contacts array is too small, resize it to fit
-	if((unsigned int) daily_contacts + new_contacts > daily_contact_infectors.size())
-	{
-		printf("warning:  contacts too small, old size: %d new size: %d\n", daily_contact_infectors.size(), daily_contacts + new_contacts);
-		daily_contact_infectors.resize(daily_contacts + new_contacts);
-		daily_contact_victims.resize(daily_contacts + new_contacts);
-		//daily_contact_kvals.resize(daily_contacts + new_contacts);
-	}
-
-	//get raw pointers to infector data
-	int * infected_idx_ptr = thrust::raw_pointer_cast(infected_indexes_present_begin);
-	int * infected_loc_ptr = thrust::raw_pointer_cast(infected_locations_begin);
-	int * infected_contacts_ptr = thrust::raw_pointer_cast(infected_contacts_desired_begin);
-	int * output_offsets_ptr = thrust::raw_pointer_cast(infected_output_offsets.data());
-
-	//get raw pointers to location data
-	int * loc_offsets_ptr = thrust::raw_pointer_cast(location_offsets->data());
-	
-	//get raw pointers into output array, and advance past spots already filled
-	int * contact_infector_ptr = thrust::raw_pointer_cast(daily_contact_infectors.data());
-	contact_infector_ptr += daily_contacts;
-	int * contact_victim_ptr = thrust::raw_pointer_cast(daily_contact_victims.data());
-	contact_victim_ptr += daily_contacts;
-
-	if(print_contact_kernel_setup|| log_contact_kernel_setup)
-	{
-		dump_contact_kernel_setup(
-			hour_string,
-			infected_indexes_present_begin, infected_locations_begin, 
-			infected_contacts_desired_begin, &infected_output_offsets,
-			loc_people_ptr, location_offsets, 
-			infected_present_count);
-	}
-
-	if(CONSOLE_OUTPUT)
-	{
-		printf("daily contacts: %d\t new_contacts: %d\t rand_offset: %d\n", daily_contacts, new_contacts, rand_offset);
-
-		//	printf("infected_present size: %d\ninfected present: %d\ninfected_locations size: %d\ninfected_contacts_desired size: %d\nloc_offsets size: %d\nloc_counts size: %d\nnum_locs: %d\n",
-		//			infected_indexes_present.size(), infected_present, infected_locations.size(), infected_contacts_desired.size(), location_offsets.size(), location_counts.size(), num_locs);
-
-	}
-
-
-	//call the kernel
-	if(debug_log_function_calls)
-		debug_print("calling contacts kernel");
-	victim_index_kernel<<<cuda_blocks, cuda_threads>>>(
-		infected_idx_ptr, infected_contacts_ptr, output_offsets_ptr, infected_loc_ptr,
-		loc_offsets_ptr, loc_people_ptr, 
-		contact_infector_ptr, contact_victim_ptr, 
-		infected_present_count, rand_offset);
-	cudaDeviceSynchronize();
-
-	if(debug_log_function_calls)
-		debug_print("contacts kernel sync'd");
-
-	//increment the contacts counter and the RNG counter
-	rand_offset += new_contacts;
-	daily_contacts += new_contacts;
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_present_count); 
-}
-
-//dumps the setup that is passed to the make_contacts kernel
-void PandemicSim::dump_contact_kernel_setup(
-	const char * hour_string,
-	d_ptr infected_indexes_present_begin, d_ptr infected_locations_begin,
-	d_ptr infected_contacts_desired_begin, d_vec * output_offsets,
-	int * location_people_ptr, d_vec *location_offsets,
-	int num_infected)
-{
-	h_vec i_idx(num_infected);
-	thrust::copy_n(infected_indexes_present_begin, num_infected, i_idx.begin());
-
-	h_vec i_loc(num_infected);
-	thrust::copy_n(infected_locations_begin, num_infected, i_loc.begin());
-
-	h_vec i_contacts_desired(num_infected);
-	thrust::copy_n(infected_contacts_desired_begin, num_infected, i_contacts_desired.begin());
-
-	h_vec o_o(num_infected);
-	thrust::copy_n(output_offsets->begin(), num_infected, o_o.begin());
-
-	h_vec loc_o = (*location_offsets);
-
-	for(int i = 0; i < num_infected; i++)
-	{
-		int idx = i_idx[i];
-		int loc = i_loc[i];
-		int c_d = i_contacts_desired[i];
-		int offset = o_o[i] + daily_contacts;
-
-		int loc_offset = loc_o[loc];
-		int loc_count = loc_o[loc+1] - loc_offset;
-
-		if(print_contact_kernel_setup)
-			printf("inf %3d\tidx: %4d\tloc: %3d\tloc_offset: %5d\tloc_count: %5d\tdesired: %d\tout_offset: %d\n",
-				i, idx, loc, loc_offset, loc_count, c_d, offset);
-		if(log_contact_kernel_setup)
-			fprintf(fContactsKernelSetup,"%d,%s,%d,%d,%d,%d,%d,%d,%d\n",
-				current_day, hour_string, i, idx, loc, loc_offset, loc_count, c_d, offset);
-	}
-
-	if(log_contact_kernel_setup)
-		fflush(fContactsKernelSetup);
-
-}
-
-
-//this is a helper method to copy contacts from the device back to the host
-void PandemicSim::validate_contacts(const char * hour_string, d_vec *d_people, d_vec *d_lookup, d_vec *d_offsets, int N)
-{	
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "validate_contacts");
-	if(debug_log_function_calls)
-		debug_print("validating contacts");
-
-	//copy data to host
-	h_vec h_lookup(number_people);
-	thrust::copy_n(d_lookup->begin(), number_people, h_lookup.begin());
-
-	//these are needed to look into the people array to verify that both people are actually present
-	//however doublechecking this is slow, so these are only copied if needed
-	h_vec h_people;
-	h_vec h_offsets;
-	
-	if(DOUBLECHECK_CONTACTS)
-	{
-		h_people.resize(d_people->size());
-		thrust::copy(d_people->begin(), d_people->end(), h_people.begin());
-
-		h_offsets.resize(d_offsets->size());
-		thrust::copy(d_offsets->begin(), d_offsets->end(), h_offsets.begin());
-	}
-
-	int start_idx = daily_contacts - N;
-	h_vec contact_infectors(N);
-	thrust::copy_n(daily_contact_infectors.begin() + start_idx, N, contact_infectors.begin());
-	h_vec contact_victims(N);
-	thrust::copy_n(daily_contact_victims.begin() + start_idx, N, contact_victims.begin());
-
-	validate_contacts(hour_string,&h_people, &h_lookup, &h_offsets, &contact_infectors, &contact_victims, N);
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, N);
-}
-
-//This method checks that the N contacts most recently generated are valid
-//It should be called immediately after make_contacts
-//Specifically, it checks that the infector and victim have the same location
-//if the DOUBLECHECK_CONTACTS define is set to true, it will actually look in the location table to be sure (very slow)
-void PandemicSim::validate_contacts(const char * hour_string, h_vec * h_people, h_vec *h_lookup, h_vec *h_offsets, h_vec *contact_infectors, h_vec *contact_victims, int N)
-{
-	if(print_contacts)
-		printf("validating %d contacts...\n", N);
-
-	if(0)
-	{
-		printf("h_people size: %d\n", h_people->size());
-		printf("h_lookup size: %d\n", h_lookup->size());
-		printf("h_offsets size: %d\n", h_offsets->size());
-		printf("c_i size: %d\n", contact_infectors->size());
-		printf("c_v size: %d\n", contact_victims->size());
-		printf("daily contacts: %d\n", daily_contacts);
-	}
-
-
-	for(int i = 0; i < N; i++)
-	{
-		int infector_idx = (*contact_infectors)[i];
-		int i_loc = (*h_lookup)[infector_idx];
-
-		int victim_idx = (*contact_victims)[i];
-		int v_loc = (*h_lookup)[victim_idx];
-
-		int i_found = 0;
-		int v_found = 0;
-
-		if(DOUBLECHECK_CONTACTS)
-		{
-			if(i_loc == v_loc)
-			{
-				int loc_o = (*h_offsets)[i_loc];
-				int loc_c = (*h_offsets)[i_loc + 1] - loc_o;
-				for(int k = loc_o; k < loc_o + loc_c; k++)
-				{
-					if((*h_people)[k] == infector_idx)
-						i_found = 1;
-					if((*h_people)[k] == victim_idx)
-						v_found = 1;
-
-					if(i_found && v_found)
-						break;
-				}
-			}
-		}
-		else
-		{
-			i_found = i_loc == v_loc;
-			v_found = i_loc == v_loc;
-		}
-
-
-		int contact_number = (daily_contacts - N) + i;
-		//current_day, i, infector_idx, victim_idx, infector_loc, victim_loc, infector_found, victim_found
-		if(log_contacts)
-			fprintf(fContacts, "%d, %d, %s, %d, %d, %d, %d, %d, %d\n",
-			current_day, contact_number, hour_string, infector_idx, victim_idx, i_loc, v_loc, i_found, v_found);
-		if(print_contacts)
-			printf("%d\tinf_idx: %5d\tvic_idx: %5d\ti_loc: %5d\tv_loc: %5d\ti_found: %d v_found: %d\n",
-			contact_number, infector_idx, victim_idx, i_loc, v_loc, i_found, v_found);
-	}
-
-	if(debug_log_function_calls)
-		debug_print("contact validation complete");
-
-	fflush(fContacts);
-	fflush(fDebug);
 }
 
 
@@ -2302,44 +1540,6 @@ void PandemicSim::dailyUpdate()
 		profiler.endFunction(current_day, infected_count);
 }
 
-//after the contacts have been converted to actions, build an array of generations for the victims
-//DEPRECATED: rolled into the contacts kernel
-void PandemicSim::deprected_daily_assignVictimGenerations()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "build_action_generations");
-
-	if(debug_log_function_calls)
-		debug_print("building generations for actions");
-	/*
-	//find the ID of the infector
-	d_vec inf_offset(daily_actions);
-	thrust::lower_bound(
-		infected_indexes.begin(),
-		infected_indexes.begin() + infected_count,
-		daily_action_infectors.begin(),
-		daily_action_infectors.begin() + daily_actions,
-		inf_offset.begin());
-
-	//get the generation of the infector, add one, store in array
-	thrust::transform(
-		daily_action_type.begin(),			//input1.begin:  the actions to do, specifies which generation gets set
-		daily_action_type.begin() + daily_actions,	//input1.end
-		thrust::make_zip_iterator(thrust::make_tuple(
-			thrust::make_permutation_iterator(infected_generation_pandemic.begin(), inf_offset.begin()),	//input2.begin: tuple (parent_gen_p,parent_gen_s)
-			thrust::make_permutation_iterator(infected_generation_seasonal.begin(), inf_offset.begin()))),
-		thrust::make_zip_iterator(thrust::make_tuple(
-			daily_action_victim_gen_p.begin(), daily_action_victim_gen_s.begin())),	//output.begin
-		generationOp());		//functor
-
-		*/
-	if(debug_log_function_calls)
-		debug_print("generation actions built");
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, daily_actions);
-
-}
 
 //once the contacts have been properly set up, this kernel determines whether each contact
 //is successful, and then outputs actions
@@ -2451,24 +1651,6 @@ void PandemicSim::daily_contactsToActions()
 	
 	if(debug_log_function_calls)
 		debug_print("beginning contacts-to-action setup");
-	
-	//sort contacts by infector
-	if(USE_KAPPA_VALUES)
-	{
-		thrust::sort_by_key(
-			daily_contact_infectors.begin(),
-			daily_contact_infectors.begin() + daily_contacts,
-			thrust::make_zip_iterator(thrust::make_tuple(
-				daily_contact_victims.begin(), daily_contact_kvals.begin())));
-	}
-	else
-	{
-		thrust::sort_by_key(
-			daily_contact_infectors.begin(),
-			daily_contact_infectors.begin() + daily_contacts,
-			daily_contact_victims.begin());
-	}
-
 	
 	//size our action output arrays
 	//moved to setup function, only done once to prevent fragmentation
@@ -3095,180 +2277,9 @@ void PandemicSim::test_locs()
 	}
 }
 
-void PandemicSim::setup_configureLogging()
-{
-
-}
-
-
-int PandemicSim::filterInfectedByPopulationGroup(const char * hour_string, vec_t * population_group, vec_t * infected_present)
-{
-	if(PROFILE_SIMULATION)
-	{
-		profiler.beginFunction(current_day,"filterInfectedByPopulationGroup");
-	}
-
-	IntIterator infected_present_end = thrust::set_intersection(
-		population_group->begin(),
-		population_group->end(),
-		infected_indexes.begin(),
-		infected_indexes.begin() + infected_count,
-		infected_present->begin());
-
-	int infected_present_count  = infected_present_end - infected_present->begin();
-//	infected_present->resize(infected_present_count);
-
-	if(SANITY_CHECK)
-	{
-		debug_assert(infected_present_count >= 0,"negative infected present count");
-		debug_assert(infected_present_count < infected_count, "too many infected present");
-	}
-
-	if(CONSOLE_OUTPUT)
-	{
-		printf("%s\tinfected present: %d\n", hour_string, infected_present_count);
-	}
-
-	if(PROFILE_SIMULATION)
-	{
-		profiler.endFunction(current_day, infected_count);
-	}
-	return infected_present_count;
-}
-
-__global__ void clipContactsDesired_byLocationCount_kernel(int * infected_loc_arr, int * loc_offset_arr, int * contacts_desired_arr, int num_infected)
-{
-	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
-	{
-		int myLoc = infected_loc_arr[myPos];		//location of infected
-
-		int loc_count = loc_offset_arr[myLoc + 1] - loc_offset_arr[myLoc];
-
-		if(loc_count == 1)
-			contacts_desired_arr[myPos] = 0;
-	}
-
-}
-
-void PandemicSim::clipContactsDesired_byLocationCount(d_ptr infected_locations_devPtr_begin, int num_infected, vec_t *loc_offsets, d_ptr contacts_desired_devPtr_begin)
-{
-	if(PROFILE_SIMULATION)
-	{
-		profiler.beginFunction(current_day,"buildContactsDesired_fromArray");
-	}
-
-	int * infected_loc_arr_ptr = thrust::raw_pointer_cast(infected_locations_devPtr_begin);
-	int * loc_offset_arr_ptr = thrust::raw_pointer_cast((*loc_offsets).data());
-	int * contacts_desired_arr_ptr = thrust::raw_pointer_cast(contacts_desired_devPtr_begin);
-
-	clipContactsDesired_byLocationCount_kernel<<<cuda_blocks,cuda_threads>>>(infected_loc_arr_ptr, loc_offset_arr_ptr, contacts_desired_arr_ptr,num_infected);
-	cudaDeviceSynchronize();
-
-
-	if(PROFILE_SIMULATION)
-	{
-		profiler.endFunction(current_day, num_infected);
-	}
-}
-
-void PandemicSim::makeContacts_byContactsDesiredArray(
-	const char * hour_string, 
-	vec_t *infected_list, int infected_list_count, 
-	vec_t *loc_people, vec_t *contacts_desired,
-	vec_t *loc_offsets, int num_locs, 
-	vec_t *people_lookup)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "makeContacts_byContactsDesiredArray");
-
-	//get the locations of infected people
-	//ASSUMES: people_locations[i] contains the location of person index i (all people are present)
-	thrust::gather(
-		infected_list->begin(),	//map.begin
-		infected_list->begin() + infected_list_count,		//map.end
-		people_lookup->begin(),
-		errand_infected_locations.begin());
-	cudaDeviceSynchronize();
-
-	//this will simply clip contacts_desired to zero if they are alone at a location
-	clipContactsDesired_byLocationCount(
-		errand_infected_locations.data(), infected_list_count,
-		loc_offsets, contacts_desired->data());
-
-	//get total number of contacts this hour 
-	int num_new_contacts = thrust::reduce(contacts_desired->begin(), contacts_desired->begin() + infected_list_count);
-
-	//get raw pointer into the location table
-	int * location_people_ptr = thrust::raw_pointer_cast(loc_people->data());
-
-	//make contacts
-	launchContactsKernel(
-		hour_string,
-		infected_list, &errand_infected_locations, 
-		contacts_desired, infected_list_count,
-		location_people_ptr, loc_offsets, num_locs);
-
-	//validate the contacts
-	if(log_contacts || print_contacts)
-	{
-		validate_contacts(hour_string, loc_people, people_lookup, loc_offsets, num_new_contacts);
-	}
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-}
-
-
-
-__global__ void weekendErrand_getInfectedHoursAndDestinations_kernel(int * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
-																	 int * output_infected_present_ptr, int * output_infected_hour_ptr, 
-																	 int * output_infected_dest_ptr, int * output_contacts_desired_ptr,
-																	 int num_infected, int num_people, int rand_offset)
-{
-	threefry2x32_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
-	union{
-		threefry2x32_ctr_t c;
-		unsigned int i[2];
-	} u;
-
-	//for each infected index i, their first errand destination and hour will be at i, their second at i+N, the third at i+N+N
-	//where N = num_people
-	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
-	{
-		//assign 2 contacts between 3 hours randomly
-		threefry2x32_ctr_t tf_ctr = {{myPos + rand_offset, myPos + rand_offset }};
-		u.c = threefry2x32(tf_ctr, tf_k);
-		int contacts_assignment = u.i[0] % 6;		//parse uint to a number between 0 <= X < 6
-
-		int myIdx = input_infected_indexes_ptr[myPos];
-
-		int myInputOffset = myIdx;
-		int output_offset = myPos * NUM_WEEKEND_ERRANDS;
-
-		output_infected_present_ptr[output_offset] = myIdx;									//copy infected index
-		output_infected_hour_ptr[output_offset] = input_errand_hours_ptr[myInputOffset];	//copy the hour of the errand
-		output_infected_dest_ptr[output_offset] = input_errand_destinations_ptr[myInputOffset];			//copy the errand destination
-		output_contacts_desired_ptr[output_offset] = weekend_errand_contact_assignments[contacts_assignment][0];	//assign contacts to this errand
-
-		myInputOffset += num_people;	//move input slot by num_people
-		output_offset++;				//move output slot over by one
-		output_infected_present_ptr[output_offset] = myIdx;
-		output_infected_hour_ptr[output_offset] = input_errand_hours_ptr[myInputOffset];
-		output_infected_dest_ptr[output_offset] = input_errand_destinations_ptr[myInputOffset];
-		output_contacts_desired_ptr[output_offset] = weekend_errand_contact_assignments[contacts_assignment][1];
-
-		myInputOffset += num_people;
-		output_offset++;
-		output_infected_present_ptr[output_offset] = myIdx;
-		output_infected_hour_ptr[output_offset] = input_errand_hours_ptr[myInputOffset];
-		output_infected_dest_ptr[output_offset] = input_errand_destinations_ptr[myInputOffset];
-		output_contacts_desired_ptr[output_offset] = weekend_errand_contact_assignments[contacts_assignment][2];
-	}
-}
 
 __global__ void kernel_getInfectedErrandLocations_weekend_wholeDay(int * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
-																	 int * output_infected_present_ptr, int * output_infected_hour_ptr, 
-																	 int * output_infected_dest_ptr,
+																	 int * output_infected_hour_ptr, int * output_infected_dest_ptr,
 																	 int num_infected, int num_people, int rand_offset)
 {
 
@@ -3282,126 +2293,21 @@ __global__ void kernel_getInfectedErrandLocations_weekend_wholeDay(int * input_i
 		int myInputOffset = myIdx;
 		int output_offset = myPos * NUM_WEEKEND_ERRANDS;
 
-		output_infected_present_ptr[output_offset] = myIdx;									//copy infected index
 		output_infected_hour_ptr[output_offset] = input_errand_hours_ptr[myInputOffset];	//copy the hour of the errand
 		output_infected_dest_ptr[output_offset] = input_errand_destinations_ptr[myInputOffset];			//copy the errand destination
 
 		myInputOffset += num_people;	//move input slot by num_people
 		output_offset++;				//move output slot over by one
 
-		output_infected_present_ptr[output_offset] = myIdx;
 		output_infected_hour_ptr[output_offset] = input_errand_hours_ptr[myInputOffset];
 		output_infected_dest_ptr[output_offset] = input_errand_destinations_ptr[myInputOffset];
 
 		myInputOffset += num_people;
 		output_offset++;
 
-		output_infected_present_ptr[output_offset] = myIdx;
 		output_infected_hour_ptr[output_offset] = input_errand_hours_ptr[myInputOffset];
 		output_infected_dest_ptr[output_offset] = input_errand_destinations_ptr[myInputOffset];
 	}
-}
-void PandemicSim::weekendErrand_doInfectedSetup(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_present, vec_t * infected_locations, vec_t * infected_contacts_desired, vec_t * infected_hour_offsets)
-{
-	if(SANITY_CHECK)
-	{
-		int all_errands_count = number_people * NUM_WEEKEND_ERRANDS;
-		debug_assert("input errand_hours.size is wrong", all_errands_count, errand_hours->size());
-		debug_assert("input errand_destinations.size is wrong", all_errands_count, errand_destinations->size());
-
-		int infected_errands_count = infected_count * NUM_WEEKEND_ERRANDS;
-		debug_assert("output infected_present.size is wrong", infected_errands_count,infected_present->size());
-		debug_assert("output infected_locations.size is wrong", infected_errands_count,infected_locations->size());
-		debug_assert("output contacts_desired.size is wrong", infected_errands_count, infected_contacts_desired->size());
-
-		debug_assert("output infected_hour_offsets.size is wrong", NUM_WEEKEND_ERRAND_HOURS + 1, infected_hour_offsets->size());
-	}
-
-	//first input: a list of all infected
-	int * global_infected_indexes_ptr = thrust::raw_pointer_cast(infected_indexes.data());
-
-	//second inputs: collated lookup tables for hours and destinations
-	int * errand_hour_ptr = thrust::raw_pointer_cast((*errand_hours).data());
-	int * errand_dest_ptr = thrust::raw_pointer_cast((*errand_destinations).data());
-
-	//outputs: a list of infected indexes, the hour of the errands, the destinations
-	int * infected_present_ptr = thrust::raw_pointer_cast(infected_present->data());
-	int * infected_destinations_ptr = thrust::raw_pointer_cast(infected_locations->data());
-	int * infected_contacts_desired_ptr = thrust::raw_pointer_cast(infected_contacts_desired->data());
-
-	//use temporary array to store the infected hours - we don't need to pass this back, as the data is conveyed in the offset array
-	vec_t infected_hour(infected_count * NUM_WEEKEND_ERRANDS);
-	int * infected_hour_ptr = thrust::raw_pointer_cast(infected_hour.data());
-
-	weekendErrand_getInfectedHoursAndDestinations_kernel<<<cuda_blocks,cuda_threads>>>(
-		global_infected_indexes_ptr,errand_hour_ptr,errand_dest_ptr,
-		infected_present_ptr, infected_hour_ptr, 
-		infected_destinations_ptr, infected_contacts_desired_ptr,
-		infected_count, number_people, rand_offset);
-	cudaDeviceSynchronize();
-	rand_offset += infected_count;
-
-	//sort the list of infected indexes present and the destinations by hour
-	//since the array is built pre-sorted by infected index, this will result in
-	//an array sorted by hour, with each hour additionally sorted by infected index
-	int infected_errand_count = infected_count * NUM_WEEKEND_ERRANDS;
-	thrust::stable_sort_by_key(
-		infected_hour.begin(),
-		infected_hour.begin() + infected_errand_count,
-		thrust::make_zip_iterator(thrust::make_tuple(
-			infected_present->begin(), infected_locations->begin(), infected_contacts_desired->begin())));
-
-	//count the number of infected in each hour	
-	thrust::lower_bound(
-		infected_hour.begin(),		//data.first
-		infected_hour.begin() + infected_errand_count,			//data.last
-		thrust::counting_iterator<int>(0),		//search val first
-		thrust::counting_iterator<int>(NUM_WEEKEND_ERRAND_HOURS), //search val last
-		infected_hour_offsets->begin());
-	(*infected_hour_offsets)[NUM_WEEKEND_ERRAND_HOURS] = infected_count * NUM_WEEKEND_ERRANDS;
-
-	if(SANITY_CHECK)
-	{
-		bool hours_sorted = thrust::is_sorted(infected_hour.begin(), infected_hour.begin() + infected_errand_count);
-		debug_assert(hours_sorted, "infected hours did not sort properly!");
-
-		for(int hour = 0; hour < NUM_WEEKEND_ERRAND_HOURS; hour++)
-		{
-			int offset = (*infected_hour_offsets)[hour];
-			int count = (*infected_hour_offsets)[hour+1] - offset;
-
-			debug_assert(count > 0, "warning: zero infected found in weekend errand hour ", hour);
-			debug_assert(count < infected_count, "more than infected_count infected found in hour ", hour);
-
-			//check that the infected indexes are still sorted for each hour
-			bool infected_are_sorted =thrust::is_sorted(infected_present->begin() + offset, infected_present->begin() + offset + count);
-			debug_assert(infected_are_sorted, "infected not sorted for weekend errand hour ", hour);
-		}
-	}
-}
-
-//helper method that will adapt older code to the IntIterator pointers
-void PandemicSim::launchContactsKernel(const char * hour_string, vec_t *infected_indexes_present, vec_t *infected_locations, vec_t *infected_contacts_desired, int infected_present, int * loc_people_ptr, vec_t *location_offsets, int num_locs)
-{
-	if(SANITY_CHECK)
-	{
-		if((*location_offsets).size() != num_locs + 1)
-		{
-			printf("WARNING: Need to convert old-style loc_offset in function %c\n",profiler.getCurrentFuncName());
-			exit(1);
-		}
-
-		//theoretically, the size of the list of infected people present should equal the parameter
-		//If infected_preent < size(), this will be OK - it will just select the first N people
-		//however, it really implies that something else went bad along the way
-	//	debug_assert("infected present size mismatch", infected_indexes_present->size(), infected_present);
-	}
-
-	launchContactsKernel(
-		hour_string,
-		infected_indexes_present->data(), infected_locations->data(), 
-		infected_contacts_desired->data(), infected_present, 
-		loc_people_ptr, location_offsets, num_locs);
 }
 
 //will resize the infected, contact, and action arrays to fit the entire population
@@ -3435,8 +2341,7 @@ void PandemicSim::setup_sizeGlobalArrays()
 	//resize contact arrays
 	daily_contact_infectors.resize(expected_max_contacts);
 	daily_contact_victims.resize(expected_max_contacts);
-	if(USE_KAPPA_VALUES)
-		daily_contact_kvals.resize(expected_max_contacts);
+	daily_contact_kvals.resize(expected_max_contacts);
 
 	//resize action arrays
 	daily_action_type.resize(expected_max_contacts);
@@ -3449,24 +2354,12 @@ void PandemicSim::setup_sizeGlobalArrays()
 	errand_people_table.resize(num_weekend_errands);
 	errand_people_weekendHours.resize(num_weekend_errands);
 	errand_people_destinations.resize(num_weekend_errands);
-	errand_locationOffsets.resize(number_workplaces + 1);
 
-	errand_infected_indexesPresent.resize(num_weekend_errands);
 	errand_infected_locations.resize(num_weekend_errands);
 	errand_infected_weekendHours.resize(num_weekend_errands);
-	errand_infected_ContactsDesired.resize(num_weekend_errands);
+	errand_infected_ContactsDesired.resize(number_people);
 
-	infected_output_offsets.resize(number_people + 1);
-
-	if(USING_ERRAND_ID_ARRAYS)
-	{
-		errand_locationIds.resize(number_workplaces * NUM_WEEKEND_ERRAND_HOURS);
-		errand_locationHours.resize(number_workplaces * NUM_WEEKEND_ERRAND_HOURS);
-		errand_locationOffsets_multiHour.resize((number_workplaces * NUM_WEEKEND_ERRAND_HOURS) + 1);
-
-		setup_initWeekendErrandSearchArrays();
-	}
-
+	errand_locationOffsets_multiHour.resize((number_workplaces * NUM_WEEKEND_ERRAND_HOURS) + 1);
 
 	if(dump_contact_kernel_random_data)
 	{
@@ -3477,52 +2370,6 @@ void PandemicSim::setup_sizeGlobalArrays()
 	}
 }
 
-//helper method to set up validation for sparse location arrays where not all people are present, eg weekend errands
-void PandemicSim::validate_weekend_errand_contacts(const char * hour_string, d_ptr people_begin, d_ptr destinations_begin, int people_present, d_ptr loc_offsets_ptr, int number_locations, int num_contacts_to_dump)
-{
-	h_vec h_people;
-	h_vec h_offsets;
-
-	//we only need these if we're actually verifying the people are inside the table (slow)
-	if(DOUBLECHECK_CONTACTS)
-	{
-		h_people.resize(people_present);
-		thrust::copy_n(people_begin, people_present, h_people.begin());
-
-		h_offsets.resize(number_locations + 1);
-		thrust::copy_n(loc_offsets_ptr, number_locations + 1, h_offsets.begin());
-	}
-
-	//sort this segment of the table by people ID
-	thrust::sort_by_key(
-		people_begin,
-		people_begin + people_present,
-		destinations_begin);
-
-	//copy the people and destinations to the host
-	h_vec hour_people(people_present);
-	thrust::copy_n(people_begin, people_present, hour_people.begin());
-	h_vec hour_destinations(people_present);
-	thrust::copy_n(destinations_begin, people_present, hour_destinations.begin());
-
-	//scatter into a fake lookup table
-	h_vec big_lookup(number_people);
-	thrust::fill(big_lookup.begin(), big_lookup.end(), -1);
-	thrust::scatter(
-		hour_destinations.begin(),
-		hour_destinations.end(),
-		hour_people.begin(),
-		big_lookup.begin());
-
-	int start_offset = daily_contacts - num_contacts_to_dump;
-	h_vec contact_infectors(num_contacts_to_dump);
-	thrust::copy_n(daily_contact_infectors.begin() + start_offset, num_contacts_to_dump, contact_infectors.begin());
-	h_vec contact_victims(num_contacts_to_dump);
-	thrust::copy_n(daily_contact_victims.begin() + start_offset, num_contacts_to_dump, contact_victims.begin());
-
-	//call validation method
-	validate_contacts(hour_string, &h_people, &big_lookup, &h_offsets, &contact_infectors, &contact_victims,num_contacts_to_dump);
-}
 
 void PandemicSim::debug_dump_array(const char * description, d_vec * gens_array, int array_count)
 {
@@ -3539,19 +2386,16 @@ void PandemicSim::debug_nullFillDailyArrays()
 {
 	thrust::fill(daily_contact_infectors.begin(), daily_contact_infectors.end(), -1);
 	thrust::fill(daily_contact_victims.begin(), daily_contact_victims.end(), -1);
-	thrust::fill(daily_contact_kvals.begin(), daily_contact_kvals.end(), -1);
+	thrust::fill(daily_contact_kvals.begin(), daily_contact_kvals.end(), CONTACT_TYPE_NONE);
 
-	thrust::fill(daily_action_type.begin(), daily_action_type.end(), -1);
+	thrust::fill(daily_action_type.begin(), daily_action_type.end(), ACTION_INFECT_NONE);
 	thrust::fill(daily_action_victim_index.begin() ,daily_action_victim_index.end(), -1);
 	thrust::fill(daily_action_victim_gen_p.begin(), daily_action_victim_gen_p.end(), GENERATION_NOT_INFECTED);
 	thrust::fill(daily_action_victim_gen_s.begin(), daily_action_victim_gen_s.end(), GENERATION_NOT_INFECTED);
 
-	thrust::fill(errand_infected_indexesPresent.begin(), errand_infected_indexesPresent.end(), -1);
 	thrust::fill(errand_infected_locations.begin(), errand_infected_locations.end(), -1);
 	thrust::fill(errand_infected_weekendHours.begin(), errand_infected_weekendHours.end(), -1);
 	thrust::fill(errand_infected_ContactsDesired.begin(), errand_infected_ContactsDesired.end(), -1);
-
-	thrust::fill(infected_output_offsets.begin(), infected_output_offsets.end(), -1);
 }
 
 void PandemicSim::setup_scaleSimulation()
@@ -3594,24 +2438,11 @@ void PandemicSim::debug_dump_array_toTempFile(const char * description, d_vec * 
 	fclose(fTemp);
 }
 
-void PandemicSim::setup_initWeekendErrandSearchArrays()
-{
-	for(int hour = 0; hour < NUM_WEEKEND_ERRAND_HOURS; hour++)
-	{
-		int start = hour * number_workplaces;
-
-		//fill the next number_workplaces locations with this hour number
-		thrust::fill_n(errand_locationHours.begin() + start, number_workplaces, hour);
-
-		//sequence 0 -> n-1
-		thrust::sequence(errand_locationIds.begin() + start, errand_locationIds.begin() + start + number_workplaces);
-	}
-}
 
 void PandemicSim::doWeekday_wholeDay()
 {
-	if(USE_KAPPA_VALUES == 0)
-		throw std::runtime_error(std::string("USE_KAPPA_VALUES must be set to 1 to use whole-day contacts"));
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "doWeekday_wholeDay");
 
 	//generate errands and afterschool locations
 	weekday_scatterAfterschoolLocations_wholeDay(&errand_people_destinations);
@@ -3620,13 +2451,14 @@ void PandemicSim::doWeekday_wholeDay()
 
 	//fish out the locations of the infected people
 	weekday_getInfectedErrandLocations_wholeDay(&errand_people_destinations, &errand_infected_locations);
+	debug_copyErrandLookup();
 	cudaDeviceSynchronize();
 
 	//generate location arrays for each hour
 	for(int hour = 0; hour < NUM_WEEKDAY_ERRAND_HOURS; hour++)
 	{
 		int people_offset_start = hour * number_people;
-		int people_offset_end = people_offset_start + number_people;
+		int people_offset_end = (hour+1) * number_people;
 
 		//write sequential blocks of indexes, i.e. 0 1 2 0 1 2
 		thrust::sequence(
@@ -3721,9 +2553,6 @@ void PandemicSim::weekday_scatterErrandDestinations_wholeDay(d_vec * people_locs
 
 void PandemicSim::doWeekend_wholeDay()
 {
-	if(USE_KAPPA_VALUES == 0)
-		throw std::runtime_error(std::string("USE_KAPPA_VALUES must be set to 1 to use whole-day contacts"));
-
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day, "doWeekendErrands_wholeDay");
 
@@ -3733,17 +2562,18 @@ void PandemicSim::doWeekend_wholeDay()
 	//allocate arrays to store the errand locations
 
 	//copy people's IDs and their 3 unique hours
-	weekend_copyPeopleIndexes(&errand_people_table);
-	weekend_generateThreeUniqueHours(&errand_people_weekendHours);
-	weekend_generateErrandDestinations(&errand_people_destinations);
+	weekend_copyPeopleIndexes_wholeDay(&errand_people_table);
+	weekend_generateThreeUniqueHours_wholeDay(&errand_people_weekendHours);
+	weekend_generateErrandDestinations_wholeDay(&errand_people_destinations);
 	cudaDeviceSynchronize();
 
 	//fish the infected errands out
-	weekend_getInfectedErrandLocations_wholeDay(&errand_people_weekendHours,&errand_people_destinations,&errand_infected_indexesPresent,&errand_infected_locations);
+	weekend_getInfectedErrandLocations_wholeDay(&errand_people_weekendHours,&errand_people_destinations,&errand_infected_locations);
+	debug_copyErrandLookup();
 	cudaDeviceSynchronize();
 
 	//TODO: assign a contacts_desired profile
-
+	weekend_assignContactsDesired_wholeDay(&errand_infected_locations);
 
 	//now sort the errand_people array into a large multi-hour location table
 	thrust::sort_by_key(
@@ -3799,6 +2629,7 @@ void PandemicSim::doWeekend_wholeDay()
 	int * output_contact_infector_ptr = thrust::raw_pointer_cast(daily_contact_infectors.data());
 	int * output_contact_victim_ptr = thrust::raw_pointer_cast(daily_contact_victims.data());
 	int * output_contact_kval_ptr = thrust::raw_pointer_cast(daily_contact_kvals.data());
+	cudaDeviceSynchronize();
 
 	makeContactsKernel_weekend<<<cuda_blocks,cuda_threads>>>(
 		infected_count, infected_indexes_ptr,
@@ -3812,6 +2643,8 @@ void PandemicSim::doWeekend_wholeDay()
 	rand_offset += (infected_count * rand_counts_used);
 	cudaDeviceSynchronize();
 
+	if(log_contacts)
+		validateContacts_wholeDay();
 
 	if(PROFILE_SIMULATION)
 		profiler.endFunction(current_day,infected_count);
@@ -3829,8 +2662,7 @@ void PandemicSim::weekday_getInfectedErrandLocations_wholeDay(vec_t * lookup_arr
 		inf_locs_ptr);
 }
 
-void PandemicSim::weekend_getInfectedErrandLocations_wholeDay(vec_t * errand_hours, vec_t * errand_destinations,
-															  vec_t * infected_present, vec_t * infected_locations)
+void PandemicSim::weekend_getInfectedErrandLocations_wholeDay(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_locations)
 {
 
 	//first input: a list of all infected
@@ -3841,7 +2673,6 @@ void PandemicSim::weekend_getInfectedErrandLocations_wholeDay(vec_t * errand_hou
 	int * errand_dest_ptr = thrust::raw_pointer_cast(errand_destinations->data());
 
 	//outputs: a list of infected indexes, the hour of the errands, the destinations
-	int * infected_present_ptr = thrust::raw_pointer_cast(infected_present->data());
 	int * infected_destinations_ptr = thrust::raw_pointer_cast(infected_locations->data());
 
 	//use temporary array to store the infected hours - we don't need to pass this back, as the data is conveyed in the offset array
@@ -3850,9 +2681,140 @@ void PandemicSim::weekend_getInfectedErrandLocations_wholeDay(vec_t * errand_hou
 
 	kernel_getInfectedErrandLocations_weekend_wholeDay<<<cuda_blocks,cuda_threads>>>(
 		global_infected_indexes_ptr,errand_hour_ptr,errand_dest_ptr,
-		infected_present_ptr, infected_hour_ptr, 
-		infected_destinations_ptr,
+		infected_hour_ptr, infected_destinations_ptr,
 		infected_count, number_people, rand_offset);
+}
+
+int PandemicSim::lookup_school_typecode_from_age_code(int age_code)
+{
+	switch(age_code)
+	{
+	case AGE_5:
+		return BUSINESS_TYPE_PRESCHOOL;
+	case AGE_9:
+		return BUSINESS_TYPE_ELEMENTARYSCHOOL;
+	case AGE_14:
+		return BUSINESS_TYPE_MIDDLESCHOOL;
+	case AGE_17:
+		return BUSINESS_TYPE_HIGHSCHOOL;
+	case AGE_22:
+		return BUSINESS_TYPE_UNIVERSITY;
+	default:
+		throw std::runtime_error("invalid school typecode");
+	}
+}
+
+__device__ void device_assignContactsDesired_weekday(unsigned int rand_val, int myAge, int * output_contacts_desired)
+{
+	int contacts_hour[2];
+	if(myAge == AGE_ADULT)
+	{
+		//get a profile between 0 and 2
+		int contacts_profile = rand_val % 3;
+
+		contacts_hour[0] = weekday_errand_contact_assignments_wholeDay[contacts_profile][0];
+		contacts_hour[1] = weekday_errand_contact_assignments_wholeDay[contacts_profile][1];
+	}
+	else
+	{
+		contacts_hour[0] = business_type_max_contacts[BUSINESS_TYPE_AFTERSCHOOL];
+		contacts_hour[1] = 0;
+	}
+
+	*(output_contacts_desired) = contacts_hour[0];
+	*(output_contacts_desired) = contacts_hour[1];
+}
+
+__global__ void kernel_assignContactsDesired_weekday_wholeDay(int * infected_indexes_arr, int num_infected, int * age_lookup_arr, int * contacts_desired_arr, int rand_offset)
+{
+	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} rand_union;
+
+	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected / 4; myPos += gridDim.x * blockDim.x)
+	{
+		threefry2x64_ctr_t tf_ctr = {{((long) (myPos + rand_offset)), ((long) myPos + rand_offset)}};
+		rand_union.c = threefry2x64(tf_ctr,tf_k);
+
+		int myOffset = num_infected * 4;
+		int myIdx[4];
+		int myAge[4];
+
+		myIdx[0] = infected_indexes_arr[myOffset];
+		myAge[0] = age_lookup_arr[myIdx[0]];
+		device_assignContactsDesired_weekday(rand_union.i[0], myAge[0], contacts_desired_arr + (myOffset * 2));
+
+		if(myOffset + 1 < num_infected)
+		{
+			myIdx[1] = infected_indexes_arr[myOffset+1];
+			myAge[1] = age_lookup_arr[myIdx[1]];
+			device_assignContactsDesired_weekday(rand_union.i[1], myAge[1], contacts_desired_arr + ((myOffset+1) * 2));
+		}
+
+		if(myOffset + 2 < num_infected)
+		{
+			myIdx[2] = infected_indexes_arr[myOffset+2];
+			myAge[2] = age_lookup_arr[myIdx[2]];
+			device_assignContactsDesired_weekday(rand_union.i[2], myAge[2], contacts_desired_arr + ((myOffset+2) * 2));
+		}
+
+		if(myOffset + 3 < num_infected)
+		{
+			myIdx[3] = infected_indexes_arr[myOffset+3];
+			myAge[3] = age_lookup_arr[myIdx[3]];
+			device_assignContactsDesired_weekday(rand_union.i[3], myAge[3], contacts_desired_arr + ((myOffset+3) * 2));
+		}
+	}
+}
+
+void PandemicSim::weekday_assignContactsDesired_wholeDay(vec_t * contacts_desired)
+{
+	int * infected_indexes_ptr = thrust::raw_pointer_cast(infected_indexes.data());
+	int * age_lookup = thrust::raw_pointer_cast(people_ages.data());
+
+	int * contacts_desired_ptr = thrust::raw_pointer_cast(errand_infected_ContactsDesired.data());
+
+	kernel_assignContactsDesired_weekday_wholeDay<<<cuda_blocks,cuda_threads>>>(infected_indexes_ptr, infected_count, age_lookup, contacts_desired_ptr, rand_offset);
+	const int rand_counts_consumed = (infected_count / 4);
+	rand_offset += rand_counts_consumed;
+}
+
+void PandemicSim::weekend_assignContactsDesired_wholeDay(vec_t * contacts_desired)
+{
+	int * contacts_desired_ptr = thrust::raw_pointer_cast(contacts_desired->data());
+	kernel_assignContactsDesired_weekend_wholeDay<<<cuda_blocks,cuda_threads>>>(infected_count, contacts_desired_ptr, rand_offset);
+	const int rand_counts_consumed = infected_count / 4;
+	rand_offset += rand_counts_consumed;
+}
+
+__global__ void kernel_assignContactsDesired_weekend_wholeDay(int num_infected, int * contacts_desired_arr, int rand_offset)
+{
+	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} rand_union;
+
+	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected / 4; myPos += gridDim.x * blockDim.x)
+	{
+		threefry2x64_ctr_t tf_ctr = {{((long) (myPos + rand_offset)), ((long) myPos + rand_offset)}};
+		rand_union.c = threefry2x64(tf_ctr,tf_k);
+
+		int myOffset = num_infected * 4;
+
+		contacts_desired_arr[myOffset] = rand_union.i[0] % 6;
+
+		if(myOffset + 1 < num_infected)
+			contacts_desired_arr[myOffset+1] = rand_union.i[1] % 6;
+
+		if(myOffset + 2 < num_infected)
+			contacts_desired_arr[myOffset+2] = rand_union.i[2] % 6;
+
+		if(myOffset + 3 < num_infected)
+			contacts_desired_arr[myOffset+3] = rand_union.i[3] % 6;
+	}
 }
 
 
@@ -3991,9 +2953,6 @@ __global__ void makeContactsKernel_weekday(int num_infected, int * infected_inde
 		int myIdx = infected_indexes[myPos];
 		int myAge = people_age[myIdx];
 
-		int loc_offset, loc_count;
-		int contacts_desired;
-
 		threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
 		union{
 			threefry2x64_ctr_t c[2];
@@ -4003,92 +2962,102 @@ __global__ void makeContactsKernel_weekday(int num_infected, int * infected_inde
 
 		threefry2x64_ctr_t tf_ctr_1 = {{(long) ((myPos * 2) + rand_offset), (long) ((myPos * 2) + rand_offset)}};
 		rand_union.c[0] = threefry2x64(tf_ctr_1, tf_k);
+		{
+			int loc_offset, loc_count;
 
-		//household: make three contacts
-		device_lookupLocationData_singleHour(myIdx, household_lookup, household_offsets, &loc_offset, &loc_count);  //lookup location data for household
-		device_selectRandomPersonFromLocation(
-			myIdx, loc_offset, loc_count,rand_union.i[0], CONTACT_TYPE_HOME,
-			household_people,
-			output_infector_arr + output_offset_base + 0,
-			output_victim_arr + output_offset_base + 0,
-			output_kval_arr + output_offset_base + 0);
-		device_selectRandomPersonFromLocation(
-			myIdx, loc_offset, loc_count,rand_union.i[1], CONTACT_TYPE_HOME,
-			household_people,
-			output_infector_arr + output_offset_base + 1,
-			output_victim_arr + output_offset_base + 1,
-			output_kval_arr + output_offset_base + 1);
-		device_selectRandomPersonFromLocation(
-			myIdx, loc_offset, loc_count,rand_union.i[2], CONTACT_TYPE_HOME,
-			household_people,
-			output_infector_arr + output_offset_base + 2,
-			output_victim_arr + output_offset_base + 2,
-			output_kval_arr + output_offset_base + 2);
+			//household: make three contacts
+			device_lookupLocationData_singleHour(myIdx, household_lookup, household_offsets, &loc_offset, &loc_count);  //lookup location data for household
+			device_selectRandomPersonFromLocation(
+				myIdx, loc_offset, loc_count,rand_union.i[0], CONTACT_TYPE_HOME,
+				household_people,
+				output_infector_arr + output_offset_base + 0,
+				output_victim_arr + output_offset_base + 0,
+				output_kval_arr + output_offset_base + 0);
+			device_selectRandomPersonFromLocation(
+				myIdx, loc_offset, loc_count,rand_union.i[1], CONTACT_TYPE_HOME,
+				household_people,
+				output_infector_arr + output_offset_base + 1,
+				output_victim_arr + output_offset_base + 1,
+				output_kval_arr + output_offset_base + 1);
+			device_selectRandomPersonFromLocation(
+				myIdx, loc_offset, loc_count,rand_union.i[2], CONTACT_TYPE_HOME,
+				household_people,
+				output_infector_arr + output_offset_base + 2,
+				output_victim_arr + output_offset_base + 2,
+				output_kval_arr + output_offset_base + 2);
 
-		//generate the second set of random numbers
+			//generate the second set of random numbers
+		}
 
 		threefry2x64_ctr_t tf_ctr_2 = {{(long) ((myPos * 2) + rand_offset + 1), (long) ((myPos * 2) + rand_offset + 1)}};
 		rand_union.c[1] = threefry2x64(tf_ctr_2, tf_k);
 
 		//now the number of contacts made will diverge, so we need to count it
 		int contacts_made = 3;
-		int kval_type;
-
-		if(myAge == AGE_ADULT)
-			kval_type = CONTACT_TYPE_WORKPLACE;
-		else
-			kval_type = CONTACT_TYPE_SCHOOL;
-
-		//workplace: make max_contacts
-		device_lookupLocationData_singleHour(
-			myIdx, workplace_lookup,workplace_offsets, workplace_max_contacts,	//input
-			&loc_offset, &loc_count, &contacts_desired);						//output  - look up max_contacts into contacts_desired
-
-		while(contacts_desired > 0 && contacts_made < MAX_CONTACTS_WEEKDAY)
 		{
-			int output_offset = output_offset_base + contacts_made;
-			device_selectRandomPersonFromLocation(
-				myIdx,loc_offset, loc_count, rand_union.i[contacts_made], kval_type,
-				workplace_people,
-				output_infector_arr + output_offset,
-				output_victim_arr + output_offset,
-				output_kval_arr + output_offset);
+			int contacts_desired, loc_offset, loc_count, kval_type;
+			int local_contacts_made = contacts_made;			//this will let both loops interleave
 
-			contacts_desired--;
-			contacts_made++;
-		}
+			//look up max_contacts into contacts_desired
+			device_lookupLocationData_singleHour(
+				myIdx, workplace_lookup,workplace_offsets, workplace_max_contacts,	//input
+				&loc_offset, &loc_count, &contacts_desired);	
+			contacts_made += contacts_desired;
 
-		//do errands
+			if(myAge == AGE_ADULT)
+				kval_type = CONTACT_TYPE_WORKPLACE;
+			else
+				kval_type = CONTACT_TYPE_SCHOOL;
 
-		//set kval for the errands
-		if(myAge == AGE_ADULT)
-			kval_type = CONTACT_TYPE_ERRAND;
-		else
-			kval_type = CONTACT_TYPE_AFTERSCHOOL;
-
-		int hour = 0;			
-		while(hour < NUM_WEEKDAY_ERRAND_HOURS)
-		{
-			//fish out location offset, count, and contacts desired
-			device_lookupInfectedLocation_multiHour(
-				myPos, hour, 
-				errand_infected_locs, errand_loc_offsets, number_locations, number_people,
-				errand_contacts_desired, NUM_WEEKDAY_ERRAND_HOURS,
-				&loc_offset, &loc_count, &contacts_desired);
-
-			//make contacts
-			while(contacts_desired > 0 && contacts_made < MAX_CONTACTS_WEEKDAY)
+			while(contacts_desired > 0 && local_contacts_made < MAX_CONTACTS_WEEKDAY)
 			{
-				int output_offset = output_offset_base + contacts_made;
+				int output_offset = output_offset_base + local_contacts_made;
 				device_selectRandomPersonFromLocation(
-					myIdx, loc_offset, loc_count, rand_union.i[contacts_made], kval_type,
-					errand_people, 
+					myIdx,loc_offset, loc_count, rand_union.i[local_contacts_made], kval_type,
+					workplace_people,
 					output_infector_arr + output_offset,
 					output_victim_arr + output_offset,
 					output_kval_arr + output_offset);
 
 				contacts_desired--;
-				contacts_made++;
+				local_contacts_made++;
+			}
+		}
+		
+		//do errands
+		{
+			int contacts_desired, loc_offset, loc_count, kval_type;
+
+			//set kval for the errands
+			if(myAge == AGE_ADULT)
+				kval_type = CONTACT_TYPE_ERRAND;
+			else
+				kval_type = CONTACT_TYPE_AFTERSCHOOL;
+
+			int hour = 0;			
+			while(hour < NUM_WEEKDAY_ERRAND_HOURS)
+			{
+				//fish out location offset, count, and contacts desired
+				device_lookupInfectedLocation_multiHour(
+					myPos, hour, 
+					errand_infected_locs, errand_loc_offsets, number_locations, number_people,
+					errand_contacts_desired, NUM_WEEKDAY_ERRAND_HOURS,
+					&loc_offset, &loc_count, &contacts_desired);
+
+				//make contacts
+				while(contacts_desired > 0 && contacts_made < MAX_CONTACTS_WEEKDAY)
+				{
+					int output_offset = output_offset_base + contacts_made;
+					device_selectRandomPersonFromLocation(
+						myIdx, loc_offset, loc_count, rand_union.i[contacts_made], kval_type,
+						errand_people, 
+						output_infector_arr + output_offset,
+						output_victim_arr + output_offset,
+						output_kval_arr + output_offset);
+
+					contacts_desired--;
+					contacts_made++;
+				}
 			}
 		}
 	}
@@ -4351,16 +3320,6 @@ __device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
 	*output_location = inf_location_arr[offset];
 }
 
-__device__ void device_fishWeekendErrandContactsDesired(unsigned int rand_val, int * inf_contacts_desired_arr)
-{
-	//6 possible permutations of assignment, get an int between 0 and 5 inclusive
-	int contacts_profile = rand_val % 6;
-
-	//copy the three values to the output array
-	inf_contacts_desired_arr[0] = weekend_errand_contact_assignments[contacts_profile][0];
-	inf_contacts_desired_arr[1] = weekend_errand_contact_assignments[contacts_profile][1];
-	inf_contacts_desired_arr[2] = weekend_errand_contact_assignments[contacts_profile][2];
-}
 
 __global__ void kernel_assignAfterschoolLocations_wholeDay(int * child_indexes_arr, int * output_array, int number_children, int number_people, int rand_offset)
 {

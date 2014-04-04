@@ -4,6 +4,7 @@
     <CudaCompile Include="profiler.cu" />
     <CudaCompile Include="PandemicSim.cu" />
     <CudaCompile Include="main.cu" />
+    <CudaCompile Include="debug.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp" />

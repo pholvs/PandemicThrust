@@ -185,6 +185,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <CudaCompile Include="debug.cu" />
     <CudaCompile Include="main.cu" />
     <CudaCompile Include="profiler.cu" />
   </ItemGroup>

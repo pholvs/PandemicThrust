@@ -9,8 +9,8 @@
 #define CULMINATION_PERIOD 10
 #define NUM_BUSINESS_TYPES 14
 
-#define MAX_CONTACTS_WEEKDAY 8
-#define MAX_CONTACTS_WEEKEND 5
+const int MAX_CONTACTS_WEEKDAY = 8;
+const int MAX_CONTACTS_WEEKEND = 5;
 
 #define MAX_CONTACTS_PER_DAY __max(MAX_CONTACTS_WEEKDAY, MAX_CONTACTS_WEEKEND)
 
@@ -39,7 +39,6 @@ public:
 	void setup_initialInfected();
 	void setup_buildFixedLocations();
 	void setup_sizeGlobalArrays();
-	void setup_initWeekendErrandSearchArrays();
 
 	void setup_scaleSimulation();
 	void setup_setCudaTopology();
@@ -47,7 +46,6 @@ public:
 	void calcLocationOffsets(vec_t * ids_to_sort,vec_t lookup_table_copy,	vec_t * location_offsets,int num_people, int num_locs);
 
 	CudaProfiler profiler;
-
 
 	void runToCompletion();
 	void dump_people_info();
@@ -58,67 +56,10 @@ public:
 	void logging_openOutputStreams();
 	void logging_closeOutputStreams();
 
-	void doWeekday();
-	void makeContacts_byLocationMax(const char * contact_type,
-		vec_t *infected_list, int infected_list_count,
-		vec_t *loc_people, vec_t *loc_max_contacts,
-		vec_t *loc_offsets, int num_locs,
-		vec_t *people_lookup);
-
-	void makeContacts_byContactsDesiredArray(const char * hour_string,
-		vec_t *infected_list, int infected_list_count,
-		vec_t *loc_people, vec_t * contacts_desired,
-		vec_t * loc_offsets, int num_locs, 
-		vec_t * people_lookup);
-
-	void weekday_scatterAfterschoolLocations(vec_t * child_locs);
-
-	int filterInfectedByPopulationGroup(const char * hour_string, vec_t * population_group, vec_t * infected_present);
 	void assign_weekday_errand_contacts(d_vec * contacts_desired, int num_infected_adults);
-	void doWeekdayErrands();
-	void weekday_scatterErrandLocations(d_vec * locations_array);
-
-	void doWeekend();
-	void doWeekendErrands();
-	void weekend_copyPeopleIndexes(vec_t * errand_people);
-	void weekend_generateThreeUniqueHours(vec_t * errand_hours);
-	void weekend_generateErrandDestinations(vec_t * errand_locations);
-	void dump_weekend_errands(vec_t errand_people, vec_t errand_hours, vec_t errand_locations, int num_to_print, int num_people);
-	void weekendErrand_doInfectedSetup(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_present, vec_t * infected_locations, vec_t * infected_contacts_desired, vec_t * infected_hour_offsets);
-
-
-	void buildContactsDesired_byLocationMax(
-		vec_t *infected_locations, int num_infected,
-		vec_t *loc_offsets, vec_t *loc_max_contacts,
-		vec_t *contacts_desired);
-
-	void clipContactsDesired_byLocationCount(d_ptr infected_locations_begin, int num_infected, vec_t *loc_offsets, d_ptr contacts_desired_begin);
-
-	void dump_contact_kernel_setup(
-		const char * hour_string,
-		d_ptr infected_indexes_present_begin, d_ptr infected_locations_begin,
-		d_ptr infected_contacts_desired_begin, d_vec * output_offsets,
-		int * location_people_ptr, d_vec *location_offsets,
-		int num_infected);
-
-	void launchContactsKernel(
-		const char * hour_string,
-		vec_t *infected_indexes_present, vec_t *infected_locations, 
-		vec_t *infected_contacts_desired, int infected_present,
-		int * loc_people_ptr, vec_t *location_offsets, int num_locs);
-
-	void launchContactsKernel(
-		const char * hour_string,
-		d_ptr infected_indexes_present_begin, d_ptr infected_locations_begin, 
-		d_ptr infected_contacts_desired_begin, int infected_present_count,
-		int * loc_people_ptr, vec_t *location_offsets, int num_locs);
-
-	void validate_contacts(const char * hour_string, d_vec *d_people, d_vec *d_lookup, d_vec *d_offsets, int N);
-	void validate_contacts(const char * hour_string, h_vec * h_people, h_vec *h_lookup, h_vec *h_offsets, h_vec *contact_infectors, h_vec *contact_victims, int N);
-	void validate_weekend_errand_contacts(const char * hour_string, d_ptr people_begin, d_ptr destinations_begin, int people_present, d_ptr loc_offsets_ptr, int number_locations, int num_contacts_to_dump);
 
 	void dailyUpdate();
-	void deprected_daily_assignVictimGenerations();
+
 	void daily_contactsToActions();
 	void dump_actions();
 	void daily_filterActions();
@@ -188,23 +129,17 @@ public:
 
 	vec_t household_offsets;
 	vec_t household_people;
-	vec_t household_max_contacts;
 
 	vec_t errand_people_table;		//people_array for errands
 	vec_t errand_people_weekendHours;		//which hours people will do errands on weekends
-	vec_t errand_people_destinations;		//lookup table (may not contain all entries on weekends)
-	vec_t errand_locationOffsets;		//location offset table
+	vec_t errand_people_destinations;		//where each person is going on their errand
 
-	vec_t errand_infected_indexesPresent;		//list of infected present during an errand
 	vec_t errand_infected_locations;			//the location of infected
 	vec_t errand_infected_weekendHours;				//the hours an infected person does their errands/contacts
 	vec_t errand_infected_ContactsDesired;		//how many contacts are desired on a given errand
 
-	vec_t infected_output_offsets;
 
 	//not implemented yet
-	vec_t errand_locationIds;
-	vec_t errand_locationHours;
 	vec_t errand_locationOffsets_multiHour;
 
 	vec_t people_ages;
@@ -222,9 +157,23 @@ public:
 	void weekday_scatterErrandDestinations_wholeDay(d_vec * people_locs);
 
 	void weekday_getInfectedErrandLocations_wholeDay(vec_t * lookup_array, vec_t * inf_locs);
+	void weekday_assignContactsDesired_wholeDay(vec_t * contacts_desired);
 
 	void doWeekend_wholeDay();
-	void weekend_getInfectedErrandLocations_wholeDay(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_present, vec_t * infected_locations);
+	void weekend_getInfectedErrandLocations_wholeDay(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_locations);
+	void weekend_assignContactsDesired_wholeDay(vec_t * contacts_desired);
+
+	void validateContacts_wholeDay();
+	void debug_copyFixedData();
+	void debug_sizeHostArrays();
+	void debug_copyErrandLookup();
+
+	void weekend_copyPeopleIndexes_wholeDay(vec_t * errand_people);
+	void weekend_generateThreeUniqueHours_wholeDay(vec_t * errand_hours);
+	void weekend_generateErrandDestinations_wholeDay(vec_t * errand_locations);
+
+
+	int lookup_school_typecode_from_age_code(int age_code);
 };
 
 #define day_of_week() (current_day % 7)
@@ -234,10 +183,6 @@ public:
 void n_unique_numbers(h_vec * array, int n, int max);
 inline char * action_type_to_char(int action);
 inline char status_int_to_char(int s);
-inline void debug_print(char * message);
-inline void debug_assert(bool condition, char * message);
-inline void debug_assert(char *message, int expected, int actual);
-inline void debug_assert(bool condition, char * message, int idx);
 
 int roundHalfUp_toInt(double d);
 
@@ -276,19 +221,34 @@ __device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
 													int * output_contacts_desired, int * output_hour, int * output_location);
 
 __device__ void device_nullFillContact(int myIdx, int * output_infector_idx, int * output_victim_idx, int * output_kval);
-__device__ void device_fishWeekendErrandContactsDesired(unsigned int rand_val, int * inf_contacts_desired_arr);
+
 __device__ void device_lookupLocationData_weekendErrand(int myPos, int errand_slot, int * infected_hour_val_arr, int * infected_hour_destination_arr, int * loc_offset_arr, int number_locations, int * hour_populationCount_exclusiveScan, int * output_location_offset, int * output_location_count);
 
 __global__ void kernel_assignAfterschoolLocations_wholeDay(int * child_indexes_arr, int * output_array, int number_children, int number_people, int rand_offset);
 __device__ void device_assignAfterschoolLocation_wholeDay(unsigned int rand_val, int number_people, int afterschool_count, int afterschool_offset, int * output_schedule);
-
 __global__ void kernel_assignErrandLocations_wholeDay(int * adult_indexes_arr, int number_adults, int number_people, int * output_arr, int rand_offset);
+
+__device__ void device_assignContactsDesired_weekday(unsigned int rand_val, int myAge, int * output_contacts_desired);
+__global__ void kernel_assignContactsDesired_weekday_wholeDay(int * adult_indexes_arr, int number_adults, int number_people, int * output_arr, int rand_offset);
+
+__global__ void kernel_assignContactsDesired_weekend_wholeDay(int num_infected, int * contacts_desired_arr, int rand_offset);
+
 __global__ void kernel_getInfectedErrandLocations_weekday_wholeDay(int * infected_index_arr, int num_infected, int * lookup_arr, int num_people, int * output_infected_locs);
 
 __global__ void kernel_getInfectedErrandLocations_weekend_wholeDay(int * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
 																   int * output_infected_present_ptr, int * output_infected_hour_ptr, 
 																   int * output_infected_dest_ptr,
 																   int num_infected, int num_people, int rand_offset);
-inline const char * lookup_contact_type(int contact_type);
-inline const char * lookup_workplace_type(int workplace_type);
-inline const char * lookup_age_type(int age_type);
+extern inline const char * lookup_contact_type(int contact_type);
+extern inline const char * lookup_workplace_type(int workplace_type);
+extern inline const char * lookup_age_type(int age_type);
+
+extern inline void debug_print(char * message);
+extern inline void debug_assert(bool condition, char * message);
+extern inline void debug_assert(char *message, int expected, int actual);
+extern inline void debug_assert(bool condition, char * message, int idx);
+
+extern const int FIRST_WEEKDAY_ERRAND_ROW;
+extern const int FIRST_WEEKEND_ERRAND_ROW;
+extern const int PROFILE_SIMULATION;
+extern int h_workplace_type_offset[NUM_BUSINESS_TYPES];
