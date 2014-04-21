@@ -72,7 +72,7 @@ public:
 	void calculateFinalReproduction();
 
 	void debug_dump_array(const char * description, d_vec * gens_array, int array_count);
-	void debug_dump_array_toTempFile(const char * description, d_vec * array, int count);
+	void debug_dump_array_toTempFile(const char * filename, const char * description, d_vec * array, int count);
 	void debug_nullFillDailyArrays();
 
 	float sim_scaling_factor;
@@ -103,7 +103,7 @@ public:
 	vec_t infected_days_seasonal;
 	vec_t infected_generation_pandemic;
 	vec_t infected_generation_seasonal;
-	vec_t infected_k_sum;
+	thrust::device_vector<float> infected_k_sum;
 
 	int daily_contacts;
 	vec_t daily_contact_infectors;
@@ -156,7 +156,7 @@ public:
 	void weekday_scatterAfterschoolLocations_wholeDay(d_vec * people_locs);
 	void weekday_scatterErrandDestinations_wholeDay(d_vec * people_locs);
 
-	void weekday_getInfectedErrandLocations_wholeDay(vec_t * lookup_array, vec_t * inf_locs);
+	void weekday_getInfectedErrandLocations_wholeDay(vec_t * lookup_array, vec_t * inf_locs, vec_t * inf_ages);
 	void weekday_assignContactsDesired_wholeDay(vec_t * contacts_desired);
 
 	void doWeekend_wholeDay();
@@ -171,9 +171,6 @@ public:
 	void weekend_copyPeopleIndexes_wholeDay(vec_t * errand_people);
 	void weekend_generateThreeUniqueHours_wholeDay(vec_t * errand_hours);
 	void weekend_generateErrandDestinations_wholeDay(vec_t * errand_locations);
-
-
-	int lookup_school_typecode_from_age_code(int age_code);
 };
 
 #define day_of_week() (current_day % 7)
@@ -183,20 +180,20 @@ public:
 void n_unique_numbers(h_vec * array, int n, int max);
 inline char * action_type_to_char(int action);
 inline char status_int_to_char(int s);
+inline int lookup_school_typecode_from_age_code(int age_code);
 
 int roundHalfUp_toInt(double d);
 
 
 struct weekend_getter;
 __global__ void get_afterschool_locations_kernel(int * child_indexes_arr, int * output_array, int number_children, int rand_offset);
-__device__ void device_fishWeekdayErrand(int rand_val, int * output_destination);
 
 __global__ void weekend_errand_hours_kernel(int * hours_array, int N, int rand_offset);
 __global__ void makeContactsKernel_weekday(int num_infected, int * infected_indexes, int * people_age,
 										   int * household_lookup, int * household_offsets, int * household_people,
 										   int * workplace_max_contacts, int * workplace_lookup, 
 										   int * workplace_offsets, int * workplace_people,
-										   int * errand_contacts_desired_profile_arr, int * errand_infected_locs,
+										   int * errand_contacts_desired, int * errand_infected_locs,
 										   int * errand_loc_offsets, int * errand_people,
 										   int number_locations, 
 										   int * output_infector_arr, int * output_victim_arr, int * output_kval_arr,
@@ -212,6 +209,7 @@ __global__ void makeContactsKernel_weekend(int num_infected, int * infected_inde
 										   int rand_offset);
 
 __device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_offset, int loc_count, unsigned int rand_val, int desired_kval, int * location_people_arr, int * output_infector_idx_arr, int * output_victim_idx_arr, int * output_kval_arr);
+
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_offset, int * loc_count);
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_max_contacts_arr, int * loc_offset, int * loc_count, int * loc_max_contacts);
 __device__ void device_lookupInfectedLocation_multiHour(int myPos, int hour, int * infected_loc_arr, int * loc_offset_arr, int number_locations, int number_people, int * contacts_desired_lookup, int number_hours, int * output_loc_offset, int * output_loc_count, int * output_contacts_desired);
@@ -224,16 +222,13 @@ __device__ void device_nullFillContact(int myIdx, int * output_infector_idx, int
 
 __device__ void device_lookupLocationData_weekendErrand(int myPos, int errand_slot, int * infected_hour_val_arr, int * infected_hour_destination_arr, int * loc_offset_arr, int number_locations, int * hour_populationCount_exclusiveScan, int * output_location_offset, int * output_location_count);
 
-__global__ void kernel_assignAfterschoolLocations_wholeDay(int * child_indexes_arr, int * output_array, int number_children, int number_people, int rand_offset);
-__device__ void device_assignAfterschoolLocation_wholeDay(unsigned int rand_val, int number_people, int afterschool_count, int afterschool_offset, int * output_schedule);
-__global__ void kernel_assignErrandLocations_wholeDay(int * adult_indexes_arr, int number_adults, int number_people, int * output_arr, int rand_offset);
 
 __device__ void device_assignContactsDesired_weekday(unsigned int rand_val, int myAge, int * output_contacts_desired);
 __global__ void kernel_assignContactsDesired_weekday_wholeDay(int * adult_indexes_arr, int number_adults, int number_people, int * output_arr, int rand_offset);
 
 __global__ void kernel_assignContactsDesired_weekend_wholeDay(int num_infected, int * contacts_desired_arr, int rand_offset);
 
-__global__ void kernel_getInfectedErrandLocations_weekday_wholeDay(int * infected_index_arr, int num_infected, int * lookup_arr, int num_people, int * output_infected_locs);
+__global__ void kernel_getInfectedErrandLocations_weekday_wholeDay(int * infected_index_arr, int num_infected, int * loc_lookup_arr, int * ages_lookup_arr, int num_people, int * output_infected_locs, int * output_infected_contacts_desired, int rand_offset);
 
 __global__ void kernel_getInfectedErrandLocations_weekend_wholeDay(int * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
 																   int * output_infected_present_ptr, int * output_infected_hour_ptr, 
@@ -252,3 +247,14 @@ extern const int FIRST_WEEKDAY_ERRAND_ROW;
 extern const int FIRST_WEEKEND_ERRAND_ROW;
 extern const int PROFILE_SIMULATION;
 extern int h_workplace_type_offset[NUM_BUSINESS_TYPES];
+
+__device__ __constant__ extern int business_type_count[NUM_BUSINESS_TYPES];	
+__device__ __constant__ extern int business_type_count_offset[NUM_BUSINESS_TYPES];
+__device__ __constant__ extern int business_type_max_contacts[NUM_BUSINESS_TYPES];
+
+__device__ __constant__ extern float weekday_errand_pdf[NUM_BUSINESS_TYPES];
+__device__ __constant__ extern float weekend_errand_pdf[NUM_BUSINESS_TYPES];				//stores PDF for weekend errand destinations
+
+__device__ __constant__ extern int SEED_DEVICE[SEED_LENGTH];
+
+extern int cuda_blocks, cuda_threads;
