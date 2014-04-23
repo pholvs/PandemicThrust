@@ -155,22 +155,17 @@ public:
 	void doWeekday_wholeDay();
 	void weekday_scatterAfterschoolLocations_wholeDay(d_vec * people_locs);
 	void weekday_scatterErrandDestinations_wholeDay(d_vec * people_locs);
-
-	void weekday_getInfectedErrandLocations_wholeDay(vec_t * lookup_array, vec_t * inf_locs, vec_t * inf_ages);
-	void weekday_assignContactsDesired_wholeDay(vec_t * contacts_desired);
+	void weekday_doInfectedSetup_wholeDay(vec_t * lookup_array, vec_t * inf_locs, vec_t * inf_contacts_desired);
 
 	void doWeekend_wholeDay();
-	void weekend_getInfectedErrandLocations_wholeDay(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_locations);
-	void weekend_assignContactsDesired_wholeDay(vec_t * contacts_desired);
+	void weekend_assignErrands(vec_t * errand_people, vec_t * errand_hours, vec_t * errand_destinations);
+	void weekend_doInfectedSetup_wholeDay(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_hours, vec_t * infected_destinations, vec_t * infected_contacts_desired);
 
 	void validateContacts_wholeDay();
 	void debug_copyFixedData();
 	void debug_sizeHostArrays();
 	void debug_copyErrandLookup();
 
-	void weekend_copyPeopleIndexes_wholeDay(vec_t * errand_people);
-	void weekend_generateThreeUniqueHours_wholeDay(vec_t * errand_hours);
-	void weekend_generateErrandDestinations_wholeDay(vec_t * errand_locations);
 
 	void debug_dumpInfectedErrandLocs();
 	void debug_validateInfectedLocArrays();
@@ -180,7 +175,7 @@ public:
 
 #define day_of_week() (current_day % 7)
 //#define is_weekend() (day_of_week() >= 5)
-#define is_weekend() (0)
+#define is_weekend() (1)
 
 void n_unique_numbers(h_vec * array, int n, int max);
 inline char * action_type_to_char(int action);
@@ -191,9 +186,6 @@ int roundHalfUp_toInt(double d);
 
 
 struct weekend_getter;
-//__global__ void get_afterschool_locations_kernel(int * child_indexes_arr, int * output_array, int number_children, int rand_offset);
-
-//__global__ void weekend_errand_hours_kernel(int * hours_array, int N, int rand_offset);
 
 __global__ void makeContactsKernel_weekday(int num_infected, int * infected_indexes, int * people_age,
 										   int * household_lookup, int * household_offsets, int * household_people,
@@ -227,23 +219,34 @@ __device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
 __device__ void device_nullFillContact(int myIdx, int * output_infector_idx, int * output_victim_idx, int * output_kval);
 
 
-__global__ void kernel_assignErrandLocations_wholeDay(int * adult_indexes_arr, int number_adults, int number_people, int * output_arr, int rand_offset);
+//weekday errand assignment
+__global__ void kernel_assignErrandLocations_weekday_wholeDay(int * adult_indexes_arr, int number_adults, int number_people, int * output_arr, int rand_offset);
+__device__ void device_fishWeekdayErrand(unsigned int * rand_val, int * output_destination);
 __global__ void kernel_assignAfterschoolLocations_wholeDay(int * child_indexes_arr, int * output_array, int number_children, int number_people, int rand_offset);
-__device__ void device_assignAfterschoolLocation_wholeDay(unsigned int * rand_val, int number_people, int afterschool_count, int afterschool_offset, int * output_schedule);
+__device__ void device_fishAfterschoolLocation(unsigned int * rand_val, int number_people, int afterschool_count, int afterschool_offset, int * output_schedule);
 
-
+//weekday infected setup
 __global__ void kernel_doInfectedSetup_weekday_wholeDay(int * infected_index_arr, int num_infected, int * loc_lookup_arr, int * ages_lookup_arr, int num_people, int * output_infected_locs, int * output_infected_contacts_desired, int rand_offset);
 __device__ void device_doAllWeekdayInfectedSetup(unsigned int * rand_val, int myPos, int * infected_indexes_arr, int * loc_lookup_arr, int * ages_lookup_arr, int num_people, int * output_infected_locs, int * output_infected_contacts_desired);
 __device__ void device_assignContactsDesired_weekday_wholeDay(unsigned int rand_val, int myAge, int * output_contacts_desired);
 __device__ void device_copyInfectedErrandLocs_weekday(int * loc_lookup_ptr, int * output_infected_locs_ptr, int num_people);
 
 
-__global__ void kernel_assignContactsDesired_weekend_wholeDay(int num_infected, int * contacts_desired_arr, int rand_offset);
+//weekend errand assignment
+__global__ void kernel_assignErrands_weekend(int * people_indexes_arr, int * errand_hours_arr, int * errand_destination_arr, int num_people, int rand_offset);
+__device__ void device_copyPeopleIndexes_weekend_wholeDay(int * id_dest_ptr, int myIdx);
+__device__ void device_assignErrandHours_weekend_wholeDay(int * hours_dest_ptr, int my_rand_offset);
+__device__ void device_assignErrandDestinations_weekend_wholeDay(int * errand_destination_arr, int my_rand_offset);
+__device__ void device_fishWeekendErrandDestination(unsigned int * rand_val, int * output_ptr);
 
-__global__ void kernel_getInfectedErrandLocations_weekend_wholeDay(int * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
-																   int * output_infected_present_ptr, int * output_infected_hour_ptr, 
-																   int * output_infected_dest_ptr,
-																   int num_infected, int num_people, int rand_offset);
+//weekend errand infected setup
+__global__ void kernel_doInfectedSetup_weekend(int * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
+											   int * output_infected_hour_ptr, int * output_infected_dest_ptr, int * output_contacts_desired_ptr,
+											   int num_infected, int rand_offset);
+__device__ void device_doAllInfectedSetup_weekend(unsigned int * rand_val, int myPos, int * infected_indexes_arr, int * input_hours_arr, int * input_dests_arr, int * output_hours_arr, int * output_dests_arr, int * output_contacts_desired_arr);
+__device__ void device_copyInfectedErrandLocs_weekend(int * input_hours_ptr, int * input_dests_ptr, int * output_hours_ptr, int * output_dests_ptr);
+
+//weekend infected setup
 extern inline const char * lookup_contact_type(int contact_type);
 extern inline const char * lookup_workplace_type(int workplace_type);
 extern inline const char * lookup_age_type(int age_type);
