@@ -72,7 +72,6 @@ public:
 	void calculateFinalReproduction();
 
 	void debug_dump_array(const char * description, d_vec * gens_array, int array_count);
-	void debug_dump_array_toTempFile(const char * filename, const char * description, d_vec * array, int count);
 	void debug_nullFillDailyArrays();
 
 	float sim_scaling_factor;
@@ -138,9 +137,8 @@ public:
 	vec_t errand_infected_weekendHours;				//the hours an infected person does their errands/contacts
 	vec_t errand_infected_ContactsDesired;		//how many contacts are desired on a given errand
 
-
-	//not implemented yet
 	vec_t errand_locationOffsets_multiHour;
+	vec_t errand_hourOffsets_weekend;
 
 	vec_t people_ages;
 
@@ -171,11 +169,19 @@ public:
 	void debug_validateInfectedLocArrays();
 	void debug_validateErrandSchedule();
 	void debug_doublecheckContact_usingPeopleTable(int pos, int number_hours, int infector, int victim);
+
+	void debug_dumpWeekendErrandTables(h_vec * h_sorted_people, h_vec * h_sorted_hours, h_vec * h_sorted_dests);
+	void debug_validateLocationArrays();
+
+	void daily_countInfectedStats();
+	int status_counts_today[16];
+	cudaEvent_t event_statusCountsReadyToDump;
+	cudaStream_t stream_countInfectedStatus;
 };
 
 #define day_of_week() (current_day % 7)
 //#define is_weekend() (day_of_week() >= 5)
-#define is_weekend() (1)
+#define is_weekend() (0)
 
 void n_unique_numbers(h_vec * array, int n, int max);
 inline char * action_type_to_char(int action);
@@ -205,7 +211,7 @@ __global__ void makeContactsKernel_weekend(int num_infected, int * infected_inde
 										   int * errand_populationCount_exclusiveScan,
 										   int number_locations, 
 										   int * output_infector_arr, int * output_victim_arr, int * output_kval_arr,
-										   int rand_offset);
+										   kval_t * output_kval_sum_arr, int rand_offset);
 
 __device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_offset, int loc_count, unsigned int rand_val, int desired_kval, int * location_people_arr, int * output_infector_idx_arr, int * output_victim_idx_arr, int * output_kval_arr, kval_t * output_kval_sum);
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_offset, int * loc_count);
@@ -246,7 +252,12 @@ __global__ void kernel_doInfectedSetup_weekend(int * input_infected_indexes_ptr,
 __device__ void device_doAllInfectedSetup_weekend(unsigned int * rand_val, int myPos, int * infected_indexes_arr, int * input_hours_arr, int * input_dests_arr, int * output_hours_arr, int * output_dests_arr, int * output_contacts_desired_arr);
 __device__ void device_copyInfectedErrandLocs_weekend(int * input_hours_ptr, int * input_dests_ptr, int * output_hours_ptr, int * output_dests_ptr);
 
-//weekend infected setup
+
+//output metrics
+__global__ void kernel_countInfectedStatus(int * pandemic_status_array, int * seasonal_status_array, int num_people, int * output_pandemic_counts, int * output_seasonal_counts);
+
+
+
 extern inline const char * lookup_contact_type(int contact_type);
 extern inline const char * lookup_workplace_type(int workplace_type);
 extern inline const char * lookup_age_type(int age_type);
@@ -255,6 +266,8 @@ extern inline void debug_print(char * message);
 extern inline void debug_assert(bool condition, char * message);
 extern inline void debug_assert(char *message, int expected, int actual);
 extern inline void debug_assert(bool condition, char * message, int idx);
+
+void debug_dump_array_toTempFile(const char * filename, const char * description, d_vec * array, int count);
 
 extern const int FIRST_WEEKDAY_ERRAND_ROW;
 extern const int FIRST_WEEKEND_ERRAND_ROW;
