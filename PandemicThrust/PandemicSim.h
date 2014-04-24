@@ -98,10 +98,6 @@ public:
 
 	int infected_count;	
 	vec_t infected_indexes;
-	vec_t infected_days_pandemic;
-	vec_t infected_days_seasonal;
-	vec_t infected_generation_pandemic;
-	vec_t infected_generation_seasonal;
 	thrust::device_vector<kval_t> infected_daily_kval_sum;
 
 	int daily_contacts;
@@ -111,13 +107,9 @@ public:
 
 	int daily_actions;
 	vec_t daily_action_type;
-	vec_t daily_action_victim_index;
-	vec_t daily_action_victim_gen_p;
-	vec_t daily_action_victim_gen_s;
 
-	//stores number of infections by generation
-	vec_t reproduction_count_pandemic;
-	vec_t reproduction_count_seasonal;
+
+
 
 	FILE *fInfected, *fLocationInfo, *fContacts, *fActions, *fActionsFiltered;
 	FILE * fContactsKernelSetup;
@@ -173,10 +165,31 @@ public:
 	void debug_dumpWeekendErrandTables(h_vec * h_sorted_people, h_vec * h_sorted_hours, h_vec * h_sorted_dests);
 	void debug_validateLocationArrays();
 
+	void daily_buildInfectedArray_global();
+	void daily_filterActions_new();
+	void daily_recoverInfected_new();
+	void final_countReproduction();
+	vec_t people_days_pandemic;
+	vec_t people_days_seasonal;
+	vec_t people_gens_pandemic;
+	vec_t people_gens_seasonal;
+
 	void daily_countInfectedStats();
 	int status_counts_today[16];
 	cudaEvent_t event_statusCountsReadyToDump;
 	cudaStream_t stream_countInfectedStatus;
+
+	//TO REMOVE:
+
+	vec_t infected_days_pandemic;
+	vec_t infected_days_seasonal;
+	vec_t infected_generation_pandemic;
+	vec_t infected_generation_seasonal;
+	vec_t daily_action_victim_index;
+	vec_t daily_action_victim_gen_p;
+	vec_t daily_action_victim_gen_s;
+	vec_t reproduction_count_pandemic;
+	vec_t reproduction_count_seasonal;
 };
 
 #define day_of_week() (current_day % 7)

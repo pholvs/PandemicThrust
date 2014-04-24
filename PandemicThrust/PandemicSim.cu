@@ -1349,11 +1349,11 @@ void PandemicSim::dailyUpdate()
 		dump_actions_filtered();
 
 	//counts the number of each generation in today's new infections 
-	daily_countReproductionNumbers(ACTION_INFECT_PANDEMIC);
-	daily_countReproductionNumbers(ACTION_INFECT_SEASONAL);
+//	daily_countReproductionNumbers(ACTION_INFECT_PANDEMIC);
+//	daily_countReproductionNumbers(ACTION_INFECT_SEASONAL);
 
 	//heals infected who are reaching culmination, and adds newly infected people
-	daily_rebuildInfectedArray();
+//	daily_rebuildInfectedArray();
 
 
 	if(CONSOLE_OUTPUT)
@@ -2121,19 +2121,23 @@ void PandemicSim::setup_sizeGlobalArrays()
 	thrust::fill(people_status_pandemic.begin(), people_status_pandemic.end(), STATUS_SUSCEPTIBLE);
 	thrust::fill(people_status_seasonal.begin(), people_status_seasonal.end(), STATUS_SUSCEPTIBLE);
 
-	//setup output reproduction number counters
-	reproduction_count_pandemic.resize(MAX_DAYS);
-	reproduction_count_seasonal.resize(MAX_DAYS);
-	thrust::fill(reproduction_count_pandemic.begin(), reproduction_count_pandemic.end(), 0);
-	thrust::fill(reproduction_count_seasonal.begin(), reproduction_count_seasonal.end(), 0);
+	people_days_pandemic.resize(number_people);
+	people_days_seasonal.resize(number_people);
+	thrust::fill(people_days_pandemic.begin(), people_days_pandemic.end(), DAY_NOT_INFECTED);
+	thrust::fill(people_days_seasonal.begin(), people_days_seasonal.end(), DAY_NOT_INFECTED);
+
+	people_gens_pandemic.resize(number_people);
+	people_gens_seasonal.resize(number_people);
+	thrust::fill(people_gens_pandemic.begin(), people_gens_pandemic.end(), GENERATION_NOT_INFECTED);
+	thrust::fill(people_gens_seasonal.begin(), people_gens_seasonal.end(), GENERATION_NOT_INFECTED);
 
 	//assume that worst-case everyone gets infected
 	infected_indexes.resize(number_people);
-	infected_days_pandemic.resize(number_people);
-	infected_days_seasonal.resize(number_people);
-	infected_generation_pandemic.resize(number_people);
-	infected_generation_seasonal.resize(number_people);
 	infected_daily_kval_sum.resize(number_people);
+//	infected_days_pandemic.resize(number_people);
+//	infected_days_seasonal.resize(number_people);
+//	infected_generation_pandemic.resize(number_people);
+//	infected_generation_seasonal.resize(number_people);
 
 	int expected_max_contacts = number_people * MAX_CONTACTS_PER_DAY;
 
@@ -2144,9 +2148,9 @@ void PandemicSim::setup_sizeGlobalArrays()
 
 	//resize action arrays
 	daily_action_type.resize(expected_max_contacts);
-	daily_action_victim_index.resize(expected_max_contacts);
-	daily_action_victim_gen_p.resize(expected_max_contacts);
-	daily_action_victim_gen_s.resize(expected_max_contacts);
+//	daily_action_victim_index.resize(expected_max_contacts);
+//	daily_action_victim_gen_p.resize(expected_max_contacts);
+//	daily_action_victim_gen_s.resize(expected_max_contacts);
 
 	//weekend errands arrays tend to be very large, so pre-allocate them
 	int num_weekend_errands = number_people * NUM_WEEKEND_ERRANDS;
@@ -3655,4 +3659,151 @@ void PandemicSim::daily_countInfectedStats()
 	
 	cudaMemcpyAsync(&status_counts_today, pandemic_counts_ptr,sizeof(int) * 16,cudaMemcpyDeviceToHost,stream_countInfectedStatus);
 	cudaEventRecord(event_statusCountsReadyToDump,stream_countInfectedStatus);*/
+}
+
+struct isInfectedPred
+{
+	__device__ bool operator() (thrust::tuple<int,int> status_tuple)
+	{
+		int status_seasonal = thrust::get<0>(status_tuple);
+		int status_pandemic = thrust::get<1>(status_tuple);
+
+		return status_pandemic >= 0 || status_seasonal >= 0;
+	}
+};
+
+void PandemicSim::daily_buildInfectedArray_global()
+{
+	thrust::counting_iterator<int> count_it(0);
+	IntIterator infected_indexes_end = thrust::copy_if(
+		count_it, count_it + number_people,
+		thrust::make_zip_iterator(thrust::make_tuple(
+			people_status_pandemic.begin(), people_status_seasonal.begin())),
+		infected_indexes.begin(),
+		isInfectedPred());
+
+	infected_count = infected_indexes_end - infected_indexes.begin();
+}
+
+
+struct filterContacts_pred
+{
+	int * status_pandemic_arr;
+	int * status_seasonal_arr;
+	__device__ bool operator() (thrust::tuple<int,int,int> action_tuple)
+	{
+		int action_type = thrust::get<0>(action_tuple);
+
+		if(action_type == ACTION_INFECT_NONE)
+			return true;
+
+		return false;
+	}
+};
+
+void PandemicSim::daily_filterActions_new()
+{
+	int num_possible_contacts = is_weekend() ? MAX_CONTACTS_WEEKEND * number_people : MAX_CONTACTS_WEEKDAY * number_people;
+
+	filterContacts_pred contact_filter_obj;
+	contact_filter_obj.status_pandemic_arr = thrust::raw_pointer_cast(people_status_pandemic.data());
+	contact_filter_obj.status_seasonal_arr = thrust::raw_pointer_cast(people_status_seasonal.data());
+
+	ZipIntTripleIterator actions_end = thrust::remove_if(
+		thrust::make_zip_iterator(thrust::make_tuple(
+			daily_action_type.begin(), 
+			daily_contact_infectors.begin(), 
+			daily_contact_victims.begin())),
+		thrust::make_zip_iterator(thrust::make_tuple(
+			daily_action_type.begin() + num_possible_contacts, 
+			daily_contact_infectors.begin() + num_possible_contacts, 
+			daily_contact_victims.begin() + num_possible_contacts)),
+			contact_filter_obj);
+}
+
+struct recoverInfected_pred
+{
+	int recover_infections_from_day;
+	__device__ bool operator() (thrust::tuple<int,int> status_obj)
+	{
+		int status_type = thrust::get<0>(status_obj);
+
+		//if there is no active infection, do not try to set recovered status
+		if(status_type < 0)
+			return false;
+
+		//get the day this infection began
+		int day_infection_began = thrust::get<1>(status_obj);
+			
+		//return true if it matches the day we're looking for, otherwise false
+		return recover_infections_from_day == day_infection_began;
+	}
+};
+
+void PandemicSim::daily_recoverInfected_new()
+{
+	recoverInfected_pred recover_obj;
+	recover_obj.recover_infections_from_day = (current_day + 1) - CULMINATION_PERIOD;
+
+	thrust::replace_if(
+		thrust::make_permutation_iterator(people_status_pandemic.begin(), infected_indexes.begin()),
+		thrust::make_permutation_iterator(people_status_pandemic.begin(), infected_indexes.begin() + infected_count),
+		thrust::make_zip_iterator(thrust::make_tuple(
+			thrust::make_permutation_iterator(people_status_pandemic.begin(), infected_indexes.begin()),
+			thrust::make_permutation_iterator(people_days_pandemic.begin(), infected_indexes.begin()))),
+		recover_obj,
+		STATUS_RECOVERED);
+
+	thrust::replace_if(
+		thrust::make_permutation_iterator(people_status_seasonal.begin(), infected_indexes.begin()),
+		thrust::make_permutation_iterator(people_status_seasonal.begin(), infected_indexes.begin() + infected_count),
+		thrust::make_zip_iterator(thrust::make_tuple(
+			thrust::make_permutation_iterator(people_status_seasonal.begin(), infected_indexes.begin()),
+			thrust::make_permutation_iterator(people_days_seasonal.begin(), infected_indexes.begin()))),
+		recover_obj,
+		STATUS_RECOVERED);
+}
+
+void PandemicSim::final_countReproduction()
+{
+	thrust::sort(people_gens_pandemic.begin(), people_gens_pandemic.end());
+	thrust::sort(people_gens_seasonal.begin(), people_gens_seasonal.end());
+
+	thrust::counting_iterator<int> count_it(0);
+
+	vec_t pandemic_gen_counts(MAX_DAYS + 1);
+	pandemic_gen_counts[MAX_DAYS] = number_people;
+	thrust::lower_bound(
+		people_gens_pandemic.begin(), people_gens_pandemic.end(),
+		count_it, count_it + MAX_DAYS,
+		pandemic_gen_counts.begin());
+
+	vec_t seasonal_gen_counts(MAX_DAYS + 1);
+	seasonal_gen_counts[MAX_DAYS] = number_people;
+	thrust::lower_bound(
+		people_gens_seasonal.begin(), people_gens_seasonal.end(),
+		count_it, count_it + MAX_DAYS,
+		seasonal_gen_counts.begin());
+
+	//copy to host
+	h_vec h_pandemic_gens = pandemic_gen_counts;
+	h_vec h_seasonal_gens = seasonal_gen_counts;
+
+	FILE * fReproduction = fopen("../output_rn.csv","w");
+	fprintf(fReproduction, "gen,gen_size_p,rn_p,gen_size_s,rn_s\n");
+	//calculate reproduction numbers
+	for(int gen = 0; gen < MAX_DAYS; gen++)
+	{
+		int gen_size_p = h_pandemic_gens[gen];
+		int next_gen_size_p = h_pandemic_gens[gen+1];
+		float rn_p = (float) next_gen_size_p / gen_size_p;
+
+		int gen_size_s = h_seasonal_gens[gen];
+		int next_gen_size_s = h_seasonal_gens[gen+1];
+		float rn_s = (float) next_gen_size_s / gen_size_s;
+
+		fprintf(fReproduction, "%d,%d,%f,%d,%f\n",
+			gen, gen_size_p, rn_p, gen_size_s, rn_s);
+	}
+	fclose(fReproduction);
 }
