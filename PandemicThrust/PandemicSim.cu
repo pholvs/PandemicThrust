@@ -778,9 +778,6 @@ void PandemicSim::setup_buildFixedLocations()
 	vec_t business_type_count_offset_vec(NUM_BUSINESS_TYPES);
 	thrust::exclusive_scan(business_type_count_vec.begin(), business_type_count_vec.end(), business_type_count_offset_vec.begin());
 
-	debug_dump_array_toTempFile("../business_type_count.txt","count",&business_type_count_vec,NUM_BUSINESS_TYPES);
-	exit(0);
-
 	//scatter code is based on Thrust example: expand.cu
 	//first, scatter the indexes of the type of business into the array mapped by the output offset
 	thrust::counting_iterator<int> count_iterator(0);
@@ -3026,6 +3023,8 @@ void PandemicSim::setup_generateHouseholds()
 	int * people_hh_arr_ptr = thrust::raw_pointer_cast(people_households.data());
 	int * people_wp_arr_ptr = thrust::raw_pointer_cast(people_workplaces.data());
 
+	exit(0);
+
 	//and then do the rest of the setup
 	kernel_generateHouseholds<<<cuda_blocks,cuda_threads>>>(
 		hh_types_array_ptr, adult_exscan_ptr, child_exscan_ptr, number_households,
@@ -3381,18 +3380,56 @@ void PandemicSim::daily_countInfectedStats()
 	int * seasonal_counts_ptr = pandemic_counts_ptr + 8;
 
 	/////NOTE:  this builds, but the code is completely untested, it should probably be tested in a synchronous fashion before using async
-	/*//memset to 0
-	cudaMemsetAsync(pandemic_counts_ptr, 0, sizeof(int) * 16,stream_countInfectedStatus);
+	//memset to 0
+	//cudaMemsetAsync(pandemic_counts_ptr, 0, sizeof(int) * 16,stream_countInfectedStatus);
+	cudaMemset(pandemic_counts_ptr, 0, sizeof(int) * 16);
 
 	int * status_pandemic_arr_ptr = thrust::raw_pointer_cast(people_status_pandemic.data());
 	int * status_seasonal_arr_ptr = thrust::raw_pointer_cast(people_status_seasonal.data());
 
 	size_t smemsize = 0;
-	kernel_countInfectedStatus<<<COUNTING_GRID_BLOCKS, COUNTING_GRID_THREADS,smemsize, stream_countInfectedStatus>>>(
+///	kernel_countInfectedStatus<<<COUNTING_GRID_BLOCKS, COUNTING_GRID_THREADS,smemsize, stream_countInfectedStatus>>>(
+	kernel_countInfectedStatus<<<COUNTING_GRID_BLOCKS, COUNTING_GRID_THREADS>>>(
 		status_pandemic_arr_ptr, status_seasonal_arr_ptr, 
 		number_people, 
 		pandemic_counts_ptr, seasonal_counts_ptr);
+
+	cudaDeviceSynchronize();
 	
-	cudaMemcpyAsync(&status_counts_today, pandemic_counts_ptr,sizeof(int) * 16,cudaMemcpyDeviceToHost,stream_countInfectedStatus);
-	cudaEventRecord(event_statusCountsReadyToDump,stream_countInfectedStatus);*/
+	//cudaMemcpyAsync(&status_counts_today, pandemic_counts_ptr,sizeof(int) * 16,cudaMemcpyDeviceToHost,stream_countInfectedStatus);
+	cudaMemcpy(&status_counts_today, pandemic_counts_ptr,sizeof(int) * 16,cudaMemcpyDeviceToHost);
+	
+	daily_writeInfectedStats();
+	//cudaEventRecord(event_statusCountsReadyToDump,stream_countInfectedStatus);
+}
+
+void PandemicSim::daily_writeInfectedStats()
+{
+	int pandemic_recovered = status_counts_today[0];
+	int pandemic_susceptible = status_counts_today[1];
+
+	int pandemic_symptomatic = status_counts_today[2] + status_counts_today[3] + status_counts_today[4];
+	int pandemic_asymptomatic = status_counts_today[5] + status_counts_today[6] + status_counts_today[7];
+
+	int seasonal_recovered = status_counts_today[8];
+	int seasonal_susceptible = status_counts_today[9];
+
+	int seasonal_symptomatic = status_counts_today[10] + status_counts_today[11] + status_counts_today[12];
+	int seasonal_asymptomatic = status_counts_today[13] + status_counts_today[14] + status_counts_today[15];
+
+	//fprintf(f_outputInfectedStats, "day,pandemic_susceptible,pandemic_infectious,pandemic_symptomatic,pandemic_asymptomatic,pandemic_recovered,seasonal_susceptible,seasonal_infectious,seasonal_symptomatic,seasonal_asymptomatic,seasonal_recovered");
+
+	fprintf(f_outputInfectedStats,
+		"%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+		current_day,
+		pandemic_susceptible,
+		pandemic_symptomatic + pandemic_asymptomatic,
+		pandemic_symptomatic,
+		pandemic_asymptomatic,
+		pandemic_recovered,
+		seasonal_susceptible,
+		seasonal_symptomatic + seasonal_asymptomatic,
+		seasonal_symptomatic,
+		seasonal_asymptomatic,
+		seasonal_recovered);
 }

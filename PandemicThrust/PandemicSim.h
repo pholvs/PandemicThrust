@@ -162,6 +162,7 @@ public:
 	vec_t people_gens_seasonal;
 
 	void daily_countInfectedStats();
+	void daily_writeInfectedStats();
 	int status_counts_today[16];
 	cudaEvent_t event_statusCountsReadyToDump;
 	cudaStream_t stream_countInfectedStatus;
