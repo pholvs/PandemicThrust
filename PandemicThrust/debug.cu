@@ -40,6 +40,9 @@ h_vec h_errand_hourOffsets_weekend;
 
 void PandemicSim::debug_copyFixedData()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "debug_copyFixedData");
+
 	thrust::copy_n(people_households.begin(), number_people, h_people_households.begin());
 	thrust::copy_n(people_workplaces.begin(), number_people, h_people_workplaces.begin());
 	thrust::copy_n(people_ages.begin(), number_people, h_people_age.begin());
@@ -50,10 +53,16 @@ void PandemicSim::debug_copyFixedData()
 
 	thrust::copy_n(household_offsets.begin(), number_households + 1, h_household_offsets.begin());
 	thrust::copy_n(household_people.begin(), number_people, h_household_people.begin());
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day, number_people);
 }
 
 void PandemicSim::debug_sizeHostArrays()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "debug_sizeHostArrays");
+
 	h_people_households.resize(people_households.size());
 	h_people_workplaces.resize(people_workplaces.size());
 	h_people_age.resize(people_ages.size());
@@ -81,17 +90,15 @@ void PandemicSim::debug_sizeHostArrays()
 
 	h_errand_locationOffsets_multiHour.resize(errand_locationOffsets_multiHour.size());
 	h_errand_hourOffsets_weekend.reserve(errand_hourOffsets_weekend.size());
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day,number_people);
 }
 
 void PandemicSim::validateContacts_wholeDay()
 {
 	if(PROFILE_SIMULATION)
-	{
-		if(is_weekend())
-			profiler.beginFunction(current_day, "validateContacts_wholeDay_weekend");
-		else
-			profiler.beginFunction(current_day, "validateContacts_wholeDay_weekday");
-	}
+		profiler.beginFunction(current_day, "validateContacts_wholeDay");
 
 	int num_contacts;
 	if(is_weekend())
@@ -219,8 +226,8 @@ void PandemicSim::validateContacts_wholeDay()
 					debug_assert(infector_age != AGE_ADULT, "school-type contact but infector is an adult, infector",infected_index);
 
 					//the location must be a valid location that is a school
-					debug_assert(infector_loc >= h_workplace_type_offset[BUSINESS_TYPE_PRESCHOOL] && infector_loc < h_workplace_type_offset[BUSINESS_TYPE_UNIVERSITY+1], "infector loc for school contact is not school locationtype, infector",infected_index);
-					debug_assert(victim_loc >= h_workplace_type_offset[BUSINESS_TYPE_PRESCHOOL] && victim_loc < h_workplace_type_offset[BUSINESS_TYPE_UNIVERSITY+1], "victim loc for school contact is not school locationtype, infector",infected_index);
+					debug_assert(infector_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_PRESCHOOL] && infector_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_UNIVERSITY+1], "infector loc for school contact is not school locationtype, infector",infected_index);
+					debug_assert(victim_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_PRESCHOOL] && victim_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_UNIVERSITY+1], "victim loc for school contact is not school locationtype, infector",infected_index);
 
 					//the school must be the infector's assigned WP
 					debug_assert(infected_wp == infector_loc, "school contact is not made at infector's school, infector",infected_index);
@@ -280,9 +287,9 @@ void PandemicSim::validateContacts_wholeDay()
 
 						//the location must be a valid location # of type that has errands
 						if(infector_loc != -1)
-							debug_assert(infector_loc >= h_workplace_type_offset[FIRST_WEEKEND_ERRAND_ROW] && infector_loc < number_workplaces, "infector location is not valid for weekend errand PDF, infector",infected_index);
+							debug_assert(infector_loc >= WORKPLACE_TYPE_OFFSET_HOST[FIRST_WEEKEND_ERRAND_ROW] && infector_loc < number_workplaces, "infector location is not valid for weekend errand PDF, infector",infected_index);
 						if(victim_loc != -1)
-							debug_assert(victim_loc >= h_workplace_type_offset[FIRST_WEEKEND_ERRAND_ROW] && victim_loc < number_workplaces, "victim location is not valid for weekend errand PDF, infector",infected_index);
+							debug_assert(victim_loc >= WORKPLACE_TYPE_OFFSET_HOST[FIRST_WEEKEND_ERRAND_ROW] && victim_loc < number_workplaces, "victim location is not valid for weekend errand PDF, infector",infected_index);
 					
 						//the locations must be the same
 						debug_assert(locs_matched, "infector and victim errand destinations do not match, infector",infected_index);
@@ -313,9 +320,9 @@ void PandemicSim::validateContacts_wholeDay()
 
 						//the location must be valid and be a destination for errands
 						if(infector_loc != -1)
-							debug_assert(infector_loc >= h_workplace_type_offset[FIRST_WEEKDAY_ERRAND_ROW] && infector_loc < number_workplaces, "infector location is not valid for weekday errand PDF, infector", infected_index);
+							debug_assert(infector_loc >= WORKPLACE_TYPE_OFFSET_HOST[FIRST_WEEKDAY_ERRAND_ROW] && infector_loc < number_workplaces, "infector location is not valid for weekday errand PDF, infector", infected_index);
 						if(victim_loc != -1)
-							debug_assert(victim_loc >= h_workplace_type_offset[FIRST_WEEKDAY_ERRAND_ROW] && victim_loc < number_workplaces, "victim location is not valid for weekday errand PDF, infector", infected_index);
+							debug_assert(victim_loc >= WORKPLACE_TYPE_OFFSET_HOST[FIRST_WEEKDAY_ERRAND_ROW] && victim_loc < number_workplaces, "victim location is not valid for weekday errand PDF, infector", infected_index);
 
 						if(DOUBLECHECK_CONTACTS && !locs_matched)
 						{
@@ -339,8 +346,8 @@ void PandemicSim::validateContacts_wholeDay()
 					debug_assert(victim_age != AGE_ADULT, "afterschool contact but victim is an adult, victim", contact_victim);
 
 					//location must be valid and location_type == AFTERSCHOOL
-					debug_assert(infector_loc >= h_workplace_type_offset[BUSINESS_TYPE_AFTERSCHOOL] && infector_loc < h_workplace_type_offset[BUSINESS_TYPE_AFTERSCHOOL + 1], "infector afterschool destination is not afterschool location type, infector", infected_index);
-					debug_assert(victim_loc >= h_workplace_type_offset[BUSINESS_TYPE_AFTERSCHOOL] && victim_loc < h_workplace_type_offset[BUSINESS_TYPE_AFTERSCHOOL + 1], "victim afterschool destination is not afterschool location type, infector", infected_index);
+					debug_assert(infector_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL] && infector_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL + 1], "infector afterschool destination is not afterschool location type, infector", infected_index);
+					debug_assert(victim_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL] && victim_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL + 1], "victim afterschool destination is not afterschool location type, infector", infected_index);
 
 					//the infector and victim must have the same location
 					debug_assert(locs_matched, "infector and victim afterschool destinations do not match, infector",infected_index);
@@ -542,11 +549,11 @@ void PandemicSim::debug_validateErrandSchedule()
 			if(myAge == AGE_ADULT || weekend)
 			{
 
-				debug_assert(errand_loc >= h_workplace_type_offset[first_errand_row] && errand_loc < number_workplaces, "person location is not valid for errand PDF, person", myIdx);
+				debug_assert(errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[first_errand_row] && errand_loc < number_workplaces, "person location is not valid for errand PDF, person", myIdx);
 			}
 			else
 			{
-				debug_assert(errand_loc >= h_workplace_type_offset[BUSINESS_TYPE_AFTERSCHOOL] && errand_loc < h_workplace_type_offset[BUSINESS_TYPE_AFTERSCHOOL + 1], "person afterschool destination is not afterschool location type, person", myIdx);
+				debug_assert(errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL] && errand_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL + 1], "person afterschool destination is not afterschool location type, person", myIdx);
 			}
 		}
 	}

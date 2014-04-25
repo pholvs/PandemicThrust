@@ -13,6 +13,8 @@
 
 #define DAY_NOT_INFECTED -1
 #define GENERATION_NOT_INFECTED -1
+const int NULL_PERSON_INDEX = -1;
+
 #define INITIAL_DAY 0
 
 const int BUSINESS_TYPE_PRESCHOOL = 3;
@@ -28,6 +30,7 @@ const int NUM_WEEKDAY_ERRAND_HOURS = 2;
 const int NUM_WEEKEND_ERRANDS = 3;
 const int NUM_WEEKEND_ERRAND_HOURS = 10;
 
+const int NUM_CONTACT_TYPES = 6;
 const int CONTACT_TYPE_NONE = 0;
 const int CONTACT_TYPE_WORKPLACE = 1;
 const int CONTACT_TYPE_SCHOOL = 2;
@@ -35,9 +38,14 @@ const int CONTACT_TYPE_ERRAND = 3;
 const int CONTACT_TYPE_AFTERSCHOOL = 4;
 const int CONTACT_TYPE_HOME = 5;
 
-const int NUM_CONTACT_TYPES = 6;
+const int NUM_PROFILES = 6;
+const int PROFILE_GAMMA1 = 0;
+const int PROFILE_LOGNORM1 = 1;
+const int PROFILE_WEIB1 = 2;
+const int PROFILE_GAMMA2 = 3;
+const int PROFILE_LOGNORM2 = 4;
+const int PROFILE_WEIB2 = 5;
 
-const int NULL_PERSON_INDEX = -1;
 
 const int AGE_5 = 0;
 const int AGE_9 = 1;

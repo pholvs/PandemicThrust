@@ -30,48 +30,29 @@ public:
 	int current_day;
 
 	void setupSim();
-	void setup_configureLogging();
 	void setup_loadParameters();
 	void setup_generateHouseholds();
-	int setup_assignWorkplace();
-	void setup_assignSchool(int * wp, int * age);
+
 	void setup_pushDeviceData();
 	void setup_initialInfected();
 	void setup_buildFixedLocations();
 	void setup_sizeGlobalArrays();
 
 	void setup_scaleSimulation();
-	void setup_setCudaTopology();
+	//void setup_setCudaTopology();
 
 	void calcLocationOffsets(vec_t * ids_to_sort,vec_t lookup_table_copy,	vec_t * location_offsets,int num_people, int num_locs);
 
 	CudaProfiler profiler;
 
 	void runToCompletion();
-	void dump_people_info();
-	void debug_validate_infected();
-	void dump_infected_info();
-	void test_locs();
 
 	void logging_openOutputStreams();
 	void logging_closeOutputStreams();
 
-	void assign_weekday_errand_contacts(d_vec * contacts_desired, int num_infected_adults);
-
 	void dailyUpdate();
 
-	void daily_contactsToActions();
-	void dump_actions();
-	void daily_filterActions();
-	void do_infection_actions(int action);
-	int daily_recoverInfected();
-	void daily_countReproductionNumbers(int action_type);
-	void dump_actions_filtered();
-	void daily_rebuildInfectedArray();
 
-	void calculateFinalReproduction();
-
-	void debug_dump_array(const char * description, d_vec * gens_array, int array_count);
 	void debug_nullFillDailyArrays();
 
 	float sim_scaling_factor;
@@ -165,8 +146,14 @@ public:
 	void debug_dumpWeekendErrandTables(h_vec * h_sorted_people, h_vec * h_sorted_hours, h_vec * h_sorted_dests);
 	void debug_validateLocationArrays();
 
+	void debug_dumpPeopleInfo();
+
+	void debug_dump_array_toTempFile(const char * filename, const char * description, d_vec * array, int count);
+
 	void daily_buildInfectedArray_global();
+	void daily_contactsToActions_new();
 	void daily_filterActions_new();
+	void daily_doInfectionActions();
 	void daily_recoverInfected_new();
 	void final_countReproduction();
 	vec_t people_days_pandemic;
@@ -179,32 +166,21 @@ public:
 	cudaEvent_t event_statusCountsReadyToDump;
 	cudaStream_t stream_countInfectedStatus;
 
-	//TO REMOVE:
+	cudaEvent_t event_actionArrayNulled;
+	cudaStream_t stream_nullActionsArray;
 
-	vec_t infected_days_pandemic;
-	vec_t infected_days_seasonal;
-	vec_t infected_generation_pandemic;
-	vec_t infected_generation_seasonal;
-	vec_t daily_action_victim_index;
-	vec_t daily_action_victim_gen_p;
-	vec_t daily_action_victim_gen_s;
-	vec_t reproduction_count_pandemic;
-	vec_t reproduction_count_seasonal;
+
+	//TO REMOVE:
 };
 
 #define day_of_week() (current_day % 7)
 //#define is_weekend() (day_of_week() >= 5)
 #define is_weekend() (0)
 
-void n_unique_numbers(h_vec * array, int n, int max);
-inline char * action_type_to_char(int action);
-inline char status_int_to_char(int s);
-inline int lookup_school_typecode_from_age_code(int age_code);
 
 int roundHalfUp_toInt(double d);
 
 
-struct weekend_getter;
 
 __global__ void makeContactsKernel_weekday(int num_infected, int * infected_indexes, int * people_age,
 										   int * household_lookup, int * household_offsets, int * household_people,
@@ -269,7 +245,50 @@ __device__ void device_copyInfectedErrandLocs_weekend(int * input_hours_ptr, int
 //output metrics
 __global__ void kernel_countInfectedStatus(int * pandemic_status_array, int * seasonal_status_array, int num_people, int * output_pandemic_counts, int * output_seasonal_counts);
 
+//contacts_to_action
+__global__ void kernel_contactsToActions(int * infected_idx_arr, kval_t * infected_kval_sum_arr, int infected_count,
+										 int * contact_victims_arr, int *contact_type_arr, int contacts_per_infector,
+										 int * people_day_pandemic_arr, int * people_day_seasonal_arr,
+										 int * people_status_p_arr, int * people_status_s_arr,
+										 int * output_action_arr,
+										 int current_day, int rand_offset);
+__device__ float device_calculateInfectionProbability(int profile, int day_of_infection, int strain, kval_t kval_sum);
+__device__ void device_checkActionAndWrite(bool infects_pandemic, bool infects_seasonal, int * pandemic_status_arr, int * seasonal_status_arr, int * dest_ptr);
 
+//initial setup methods
+__global__ void kernel_householdTypeAssignment(int * hh_type_array, int num_households, int rand_offset);
+__device__ int device_setup_fishHouseholdType(unsigned int rand_val);
+
+__global__ void kernel_generateHouseholds(
+	int * hh_type_array, int * adult_exscan_arr, int * child_exscan_arr, int num_households,
+	int * adult_index_arr, int * child_index_arr, 
+	int * people_age_arr, int * people_households_arr, int * people_workplaces_arr,
+	int rand_offset);
+__device__ int device_setup_fishWorkplace(unsigned int rand_val);
+__device__ void device_setup_fishSchoolAndAge(unsigned int rand_val, int * output_age_ptr, int * output_school_ptr);
+
+//do_action methods
+__global__ void kernel_doInfectionActions(
+int * contact_action_arr, int * contact_victim_arr, int * contact_infector_arr,
+	int action_count,
+	int * people_status_p_arr, int * people_status_s_arr,
+	int * people_gen_p_arr, int * people_gen_s_arr,
+	int * people_day_p_arr, int * people_day_s_arr,
+	int day_tomorrow, int rand_offset);
+__device__ void device_doInfectionAction(
+	unsigned int rand_val1, unsigned int rand_val2,
+	int day_tomorrow,
+	int action_type, int infector, int victim,
+	int * people_status_p_arr, int * people_status_s_arr,
+	int * people_gen_p_arr, int * people_gen_s_arr,
+	int * people_day_p_arr, int * people_day_s_arr);
+__device__ void device_assignProfile(unsigned int rand_val, int * output_status_ptr);
+
+void n_unique_numbers(h_vec * array, int n, int max);
+inline char * action_type_to_string(int action);
+inline char status_int_to_char(int s);
+inline int lookup_school_typecode_from_age_code(int age_code);
+inline char * profile_int_to_string(int p);
 
 extern inline const char * lookup_contact_type(int contact_type);
 extern inline const char * lookup_workplace_type(int workplace_type);
@@ -280,9 +299,8 @@ extern inline void debug_assert(bool condition, char * message);
 extern inline void debug_assert(char *message, int expected, int actual);
 extern inline void debug_assert(bool condition, char * message, int idx);
 
-void debug_dump_array_toTempFile(const char * filename, const char * description, d_vec * array, int count);
 
 extern const int FIRST_WEEKDAY_ERRAND_ROW;
 extern const int FIRST_WEEKEND_ERRAND_ROW;
 extern const int PROFILE_SIMULATION;
-extern int h_workplace_type_offset[NUM_BUSINESS_TYPES];
+extern int WORKPLACE_TYPE_OFFSET_HOST[NUM_BUSINESS_TYPES];

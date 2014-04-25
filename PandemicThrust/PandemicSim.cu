@@ -6,6 +6,9 @@
 #include "PandemicSim.h"
 #include "thrust_functors.h"
 
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/scan.h>
+
 
 
 #define USING_ERRAND_ID_ARRAYS 1
@@ -25,7 +28,7 @@ const int PROFILE_SIMULATION = 1;
 #define SANITY_CHECK 1
 
 #define print_infected_info 0
-#define log_infected_info GLOBAL_LOGGING
+#define log_infected_info 0
 
 #define print_location_info 0
 #define log_location_info 0
@@ -39,12 +42,12 @@ const int PROFILE_SIMULATION = 1;
 #define log_contacts GLOBAL_LOGGING
 
 #define print_actions 0
-#define log_actions GLOBAL_LOGGING
+#define log_actions 0
 
 #define print_actions_filtered 0
-#define log_actions_filtered GLOBAL_LOGGING
+#define log_actions_filtered 0
 
-#define log_people_info GLOBAL_LOGGING
+#define log_people_info 0
 
 //low overhead
 #define debug_log_function_calls 1
@@ -62,62 +65,72 @@ FILE * f_outputInfectedStats;
 
 FILE * fDebug;
 
-int SEED_HOST[SEED_LENGTH];
 __device__ __constant__ int SEED_DEVICE[SEED_LENGTH];
+int SEED_HOST[SEED_LENGTH];
 
-__device__ __constant__ int business_type_count[NUM_BUSINESS_TYPES];				//stores number of each type of business
-__device__ __constant__ int business_type_count_offset[NUM_BUSINESS_TYPES];			//stores location number of first business of this type
-__device__ __constant__ float weekday_errand_pdf[NUM_BUSINESS_TYPES];				//stores PDF for weekday errand destinations
-__device__ __constant__ float weekend_errand_pdf[NUM_BUSINESS_TYPES];				//stores PDF for weekend errand destinations
-__device__ __constant__ float infectiousness_profile[CULMINATION_PERIOD];			//stores viral shedding profiles
+__device__ __constant__ float WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_DEVICE[NUM_BUSINESS_TYPES];				//stores PDF for weekday errand destinations
+float WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_HOST[NUM_BUSINESS_TYPES];
+__device__ __constant__ float WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_DEVICE[NUM_BUSINESS_TYPES];				//stores PDF for weekend errand destinations
+float WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_HOST[NUM_BUSINESS_TYPES];
 
-__device__ __constant__ kval_t kval_lookup[NUM_CONTACT_TYPES];
-__device__ __constant__ int weekday_people_exclusiveScan[NUM_WEEKDAY_ERRAND_HOURS + 1];
 
-__device__ __constant__ int business_type_max_contacts[NUM_BUSINESS_TYPES];
-
-__device__ __constant__ int weekend_errand_contact_assignments_wholeDay[6][2];
-__device__ __constant__ int weekday_errand_contact_assignments_wholeDay[3][2];
-
-//__device__ __constant__ float infectiousness_profiles_all[6][CULMINATION_PERIOD];
+__device__ __constant__ int WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_DEVICE[6][2];
+int WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[6][2];
+__device__ __constant__ int WEEKDAY_ERRAND_CONTACT_ASSIGNMENTS_DEVICE[3][2];
+int WEEKDAY_ERRAND_CONTACT_ASSIGNMENT_HOST[3][2];
 
 #define STRAIN_COUNT 2
-__device__ __constant__ float BASE_REPRODUCTION_DEVICE[STRAIN_COUNT];
+#define STRAIN_PANDEMIC 0
+#define STRAIN_SEASONAL 1
+//__device__ __constant__ float BASE_REPRODUCTION_DEVICE[STRAIN_COUNT];
 float BASE_REPRODUCTION_HOST[STRAIN_COUNT];
 
-
-#define BASE_R_PANDEMIC_DEVICE BASE_REPRODUCTION_DEVICE[0]
-#define BASE_R_SEASONAL_DEVICE BASE_REPRODUCTION_DEVICE[1]
 #define BASE_R_PANDEMIC_HOST BASE_REPRODUCTION_HOST[0]
 #define BASE_R_SEASONAL_HOST BASE_REPRODUCTION_HOST[1]
 
+
+__device__ __constant__ float INFECTIOUSNESS_FACTOR_DEVICE[STRAIN_COUNT];
+float INFECTIOUSNESS_FACTOR_HOST[STRAIN_COUNT];
+
+__device__ __constant__ float PERCENT_SYMPTOMATIC_DEVICE;
+float PERCENT_SYMPTOMATIC_HOST;
+
+__device__ __constant__ kval_t KVAL_LOOKUP_DEVICE[NUM_CONTACT_TYPES];
+kval_t KVAL_LOOKUP_HOST[NUM_CONTACT_TYPES];
+
 #define UNSIGNED_MAX (unsigned int) -1
 
-float workplace_type_pdf[NUM_BUSINESS_TYPES];
-int h_workplace_type_offset[NUM_BUSINESS_TYPES];
-int h_workplace_type_counts[NUM_BUSINESS_TYPES];
-int h_workplace_max_contacts[NUM_BUSINESS_TYPES];
+float WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[NUM_BUSINESS_TYPES];
+__device__ float WORKPLACE_TYPE_ASSIGNMENT_PDF_DEVICE[NUM_BUSINESS_TYPES];
 
-float h_weekday_errand_pdf[NUM_BUSINESS_TYPES];
-float h_weekend_errand_pdf[NUM_BUSINESS_TYPES];
-float h_infectiousness_profile[CULMINATION_PERIOD];
+int WORKPLACE_TYPE_OFFSET_HOST[NUM_BUSINESS_TYPES];
+__device__ __constant__ int WORKPLACE_TYPE_OFFSET_DEVICE[NUM_BUSINESS_TYPES];			//stores location number of first business of this type
+int WORKPLACE_TYPE_COUNT_HOST[NUM_BUSINESS_TYPES];
+__device__ __constant__ int WORKPLACE_TYPE_COUNT_DEVICE[NUM_BUSINESS_TYPES];				//stores number of each type of business
+int WORKPLACE_TYPE_MAX_CONTACTS_HOST[NUM_BUSINESS_TYPES];
+__device__ __constant__ int WORKPLACE_TYPE_MAX_CONTACTS_DEVICE[NUM_BUSINESS_TYPES];
 
-int h_weekday_errand_contact_assignments_wholeDay[3][2];
-int h_weekend_errand_contact_assignments_wholeDay[6][2];
 
-float h_infectiousness_profile_all[6][CULMINATION_PERIOD];
-kval_t h_kval_lookup[NUM_CONTACT_TYPES];
+__device__ __constant__ float INFECTIOUNESS_PROFILES_DEVICE[6][CULMINATION_PERIOD];
+float INFECTIOUSNESS_PROFILES_HOST[NUM_PROFILES][CULMINATION_PERIOD];
 
 
 
 #define CHILD_DATA_ROWS 5
-float child_CDF[CHILD_DATA_ROWS];
-int child_wp_types[CHILD_DATA_ROWS];
+float CHILD_AGE_CDF_HOST[CHILD_DATA_ROWS];
+__device__ float CHILD_AGE_CDF_DEVICE[CHILD_DATA_ROWS];
+int CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[CHILD_DATA_ROWS];
+__device__ int CHILD_AGE_SCHOOLTYPE_LOOKUP_DEVICE[CHILD_DATA_ROWS];
 
 #define HH_TABLE_ROWS 9
-int hh_adult_count[HH_TABLE_ROWS];
-int hh_child_count[HH_TABLE_ROWS];
-float hh_type_cdf[HH_TABLE_ROWS];
+float HOUSEHOLD_TYPE_CDF_HOST[HH_TABLE_ROWS];
+__device__ __constant__ float HOUSEHOLD_TYPE_CDF_DEVICE[HH_TABLE_ROWS];
+int HOUSEHOLD_TYPE_ADULT_COUNT_HOST[HH_TABLE_ROWS];
+__device__ __constant__ int HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[HH_TABLE_ROWS];
+int HOUSEHOLD_TYPE_CHILD_COUNT_HOST[HH_TABLE_ROWS];
+__device__ __constant__ int HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[HH_TABLE_ROWS];
+
+
 
 //the first row of the PDF with a value > 0
 const int FIRST_WEEKDAY_ERRAND_ROW = 9;
@@ -137,6 +150,9 @@ PandemicSim::PandemicSim()
 	setup_loadParameters();
 	setup_scaleSimulation();
 
+	//copy everything down to the GPU
+	setup_pushDeviceData();
+
 	if(debug_log_function_calls)
 		debug_print("parameters loaded");
 
@@ -148,12 +164,12 @@ PandemicSim::~PandemicSim(void)
 	cudaStreamDestroy(stream_countInfectedStatus);
 	cudaEventDestroy(event_statusCountsReadyToDump);
 
+	profiler.done();
 	logging_closeOutputStreams();
 }
 
 void PandemicSim::setupSim()
 {
-	
 	if(PROFILE_SIMULATION)
 	{
 		profiler.beginFunction(-1,"setupSim");
@@ -167,29 +183,21 @@ void PandemicSim::setupSim()
 	rand_offset = 0;				//set global rand counter to 0
 
 	current_day = -1;
-
-	debug_print("beginning setup");
-
-
-
+	
 	if(debug_log_function_calls)
 		debug_print("setting up households");
 	
 	//setup households
 	setup_generateHouseholds();	//generates according to PDFs
-	setup_sizeGlobalArrays(); // only after households are generated
 
-	if(log_people_info)
-		dump_people_info();
+//	if(log_people_info)
+//		dump_people_info();
 
-	printf("%d people, %d households, %d workplaces\n",number_people, number_households, number_workplaces);
+	if(CONSOLE_OUTPUT)
+		printf("%d people, %d households, %d workplaces\n",number_people, number_households, number_workplaces);
 
 	setup_buildFixedLocations();	//household and workplace
 	setup_initialInfected();
-
-
-	//copy everything down to the GPU
-	setup_pushDeviceData();
 
 	if(log_contacts)
 	{
@@ -256,6 +264,8 @@ void PandemicSim::logging_openOutputStreams()
 
 void PandemicSim::setup_loadParameters()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(-1,"setup_loadParameters");
 
 	//load 4 seeds from file
 	FILE * fSeed = fopen("seed.txt","r");
@@ -309,7 +319,8 @@ void PandemicSim::setup_loadParameters()
 	number_households = 100000;
 	number_workplaces = 1300;
 
-	printf("max days: %d\nr_p: %f\nr_s: %f\ninitial_pandemic: %d\ninitial_seasonal: %d\nnumber_households: %d\n",
+	if(CONSOLE_OUTPUT)
+		printf("max days: %d\nr_p: %f\nr_s: %f\ninitial_pandemic: %d\ninitial_seasonal: %d\nnumber_households: %d\n",
 		MAX_DAYS,
 		BASE_R_PANDEMIC_HOST,
 		BASE_R_SEASONAL_HOST,
@@ -321,305 +332,320 @@ void PandemicSim::setup_loadParameters()
 	//hard coded these for time currently since we have no other sets
 
 	//cdf for child age
-	child_CDF[0] = 0.24f;
-	child_CDF[1] = 0.47f;
-	child_CDF[2] = 0.72f;
-	child_CDF[3] = 0.85f;
-	child_CDF[4] = 1.0f;
+	CHILD_AGE_CDF_HOST[0] = 0.24f;
+	CHILD_AGE_CDF_HOST[1] = 0.47f;
+	CHILD_AGE_CDF_HOST[2] = 0.72f;
+	CHILD_AGE_CDF_HOST[3] = 0.85f;
+	CHILD_AGE_CDF_HOST[4] = 1.0f;
 
 	//what workplace type children get for this age
-	child_wp_types[0] = 3;
-	child_wp_types[1] = 4;
-	child_wp_types[2] = 5;
-	child_wp_types[3] = 6;
-	child_wp_types[4] = 7;
+	CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[0] = 3;
+	CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[1] = 4;
+	CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[2] = 5;
+	CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[3] = 6;
+	CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[4] = 7;
 
 	//workplace PDF for adults
-	workplace_type_pdf[0] = 0.06586f;
-	workplace_type_pdf[1] = 0.05802f;
-	workplace_type_pdf[2] = 0.30227f;
-	workplace_type_pdf[3] = 0.0048f;
-	workplace_type_pdf[4] = 0.00997f;
-	workplace_type_pdf[5] = 0.203f;
-	workplace_type_pdf[6] = 0.09736f;
-	workplace_type_pdf[7] = 0.10598f;
-	workplace_type_pdf[8] = 0.00681f;
-	workplace_type_pdf[9] = 0.02599f;
-	workplace_type_pdf[10] = 0.f;
-	workplace_type_pdf[11] = 0.08749f;
-	workplace_type_pdf[12] = 0.03181f;
-	workplace_type_pdf[13] = 0.00064f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[0] = 0.06586f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[1] = 0.05802f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[2] = 0.30227f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[3] = 0.0048f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[4] = 0.00997f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[5] = 0.203f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[6] = 0.09736f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[7] = 0.10598f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[8] = 0.00681f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[9] = 0.02599f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[10] = 0.f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[11] = 0.08749f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[12] = 0.03181f;
+	WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[13] = 0.00064f;
 
 	//number of each type of workplace
-	h_workplace_type_counts[0] = 100;
-	h_workplace_type_counts[1] = 700;
-	h_workplace_type_counts[2] = 240;
-	h_workplace_type_counts[3] = 30;
-	h_workplace_type_counts[4] = 10;
-	h_workplace_type_counts[5] = 20;
-	h_workplace_type_counts[6] = 10;
-	h_workplace_type_counts[7] = 10;
-	h_workplace_type_counts[8] = 30;
-	h_workplace_type_counts[9] = 50;
-	h_workplace_type_counts[10] = 0;
-	h_workplace_type_counts[11] = 30;
-	h_workplace_type_counts[12] = 40;
-	h_workplace_type_counts[13] = 10;
+	WORKPLACE_TYPE_COUNT_HOST[0] = 100;
+	WORKPLACE_TYPE_COUNT_HOST[1] = 700;
+	WORKPLACE_TYPE_COUNT_HOST[2] = 240;
+	WORKPLACE_TYPE_COUNT_HOST[3] = 30;
+	WORKPLACE_TYPE_COUNT_HOST[4] = 10;
+	WORKPLACE_TYPE_COUNT_HOST[5] = 20;
+	WORKPLACE_TYPE_COUNT_HOST[6] = 10;
+	WORKPLACE_TYPE_COUNT_HOST[7] = 10;
+	WORKPLACE_TYPE_COUNT_HOST[8] = 30;
+	WORKPLACE_TYPE_COUNT_HOST[9] = 50;
+	WORKPLACE_TYPE_COUNT_HOST[10] = 0;
+	WORKPLACE_TYPE_COUNT_HOST[11] = 30;
+	WORKPLACE_TYPE_COUNT_HOST[12] = 40;
+	WORKPLACE_TYPE_COUNT_HOST[13] = 10;
 
 	//maximum number of contacts made at each workplace type
-	h_workplace_max_contacts[0] = 3;
-	h_workplace_max_contacts[1] = 3;
-	h_workplace_max_contacts[2] = 3;
-	h_workplace_max_contacts[3] = 2;
-	h_workplace_max_contacts[4] = 2;
-	h_workplace_max_contacts[5] = 3;
-	h_workplace_max_contacts[6] = 3;
-	h_workplace_max_contacts[7] = 2;
-	h_workplace_max_contacts[8] = 2;
-	h_workplace_max_contacts[9] = 2;
-	h_workplace_max_contacts[10] = 0;
-	h_workplace_max_contacts[11] = 2;
-	h_workplace_max_contacts[12] = 2;
-	h_workplace_max_contacts[13] = 2;
-
-
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[0] = 3;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[1] = 3;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[2] = 3;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[3] = 2;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[4] = 2;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[5] = 3;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[6] = 3;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[7] = 2;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[8] = 2;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[9] = 2;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[10] = 0;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[11] = 2;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[12] = 2;
+	WORKPLACE_TYPE_MAX_CONTACTS_HOST[13] = 2;
 
 	//pdf for weekday errand location generation
 	//most entries are 0.0
-	thrust::fill(h_weekday_errand_pdf, h_weekday_errand_pdf + NUM_BUSINESS_TYPES, 0.0);
-	h_weekday_errand_pdf[9] = 0.61919f;
-	h_weekday_errand_pdf[11] = 0.27812f;
-	h_weekday_errand_pdf[12] = 0.06601f;
-	h_weekday_errand_pdf[13] = 0.03668f;
+	thrust::fill(WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_HOST, WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_HOST + NUM_BUSINESS_TYPES, 0.0);
+	WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_HOST[9] = 0.61919f;
+	WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_HOST[11] = 0.27812f;
+	WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_HOST[12] = 0.06601f;
+	WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_HOST[13] = 0.03668f;
 
 	//pdf for weekend errand location generation
 	//most entries are 0.0
-	thrust::fill(h_weekend_errand_pdf, h_weekend_errand_pdf + NUM_BUSINESS_TYPES, 0.0f);
-	h_weekend_errand_pdf[9] = 0.51493f;
-	h_weekend_errand_pdf[11] = 0.25586f;
-	h_weekend_errand_pdf[12] = 0.1162f;
-	h_weekend_errand_pdf[13] = 0.113f;
+	thrust::fill(WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_HOST, WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_HOST + NUM_BUSINESS_TYPES, 0.0f);
+	WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_HOST[9] = 0.51493f;
+	WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_HOST[11] = 0.25586f;
+	WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_HOST[12] = 0.1162f;
+	WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_HOST[13] = 0.113f;
 
 
 	//how many adults in each household type
-	hh_adult_count[0] = 1;
-	hh_adult_count[1] = 1;
-	hh_adult_count[2] = 2;
-	hh_adult_count[3] = 1;
-	hh_adult_count[4] = 2;
-	hh_adult_count[5] = 1;
-	hh_adult_count[6] = 2;
-	hh_adult_count[7] = 1;
-	hh_adult_count[8] = 2;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[0] = 1;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[1] = 1;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[2] = 2;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[3] = 1;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[4] = 2;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[5] = 1;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[6] = 2;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[7] = 1;
+	HOUSEHOLD_TYPE_ADULT_COUNT_HOST[8] = 2;
 
 	//how many children in each household type
-	hh_child_count[0] = 0;
-	hh_child_count[1] = 1;
-	hh_child_count[2] = 0;
-	hh_child_count[3] = 2;
-	hh_child_count[4] = 1;
-	hh_child_count[5] = 3;
-	hh_child_count[6] = 2;
-	hh_child_count[7] = 4;
-	hh_child_count[8] = 3;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[0] = 0;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[1] = 1;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[2] = 0;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[3] = 2;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[4] = 1;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[5] = 3;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[6] = 2;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[7] = 4;
+	HOUSEHOLD_TYPE_CHILD_COUNT_HOST[8] = 3;
 
 	//the PDF of each household type
-	hh_type_cdf[0] = 0.279f;
-	hh_type_cdf[1] = 0.319f;
-	hh_type_cdf[2] = 0.628f;
-	hh_type_cdf[3] = 0.671f;
-	hh_type_cdf[4] = 0.8f;
-	hh_type_cdf[5] = 0.812f;
-	hh_type_cdf[6] = 0.939f;
-	hh_type_cdf[7] = 0.944f;
-	hh_type_cdf[8] = 1.0f;
+	HOUSEHOLD_TYPE_CDF_HOST[0] = 0.279f;
+	HOUSEHOLD_TYPE_CDF_HOST[1] = 0.319f;
+	HOUSEHOLD_TYPE_CDF_HOST[2] = 0.628f;
+	HOUSEHOLD_TYPE_CDF_HOST[3] = 0.671f;
+	HOUSEHOLD_TYPE_CDF_HOST[4] = 0.8f;
+	HOUSEHOLD_TYPE_CDF_HOST[5] = 0.812f;
+	HOUSEHOLD_TYPE_CDF_HOST[6] = 0.939f;
+	HOUSEHOLD_TYPE_CDF_HOST[7] = 0.944f;
+	HOUSEHOLD_TYPE_CDF_HOST[8] = 1.0f;
 
 	//store all permutations of contact assignments
 
 	//number of contacts made in each hour
-	h_weekday_errand_contact_assignments_wholeDay[0][0] = 2;
-	h_weekday_errand_contact_assignments_wholeDay[0][1] = 0;
+	WEEKDAY_ERRAND_CONTACT_ASSIGNMENT_HOST[0][0] = 2;
+	WEEKDAY_ERRAND_CONTACT_ASSIGNMENT_HOST[0][1] = 0;
 
-	h_weekday_errand_contact_assignments_wholeDay[1][0] = 0;
-	h_weekday_errand_contact_assignments_wholeDay[1][1] = 2;
+	WEEKDAY_ERRAND_CONTACT_ASSIGNMENT_HOST[1][0] = 0;
+	WEEKDAY_ERRAND_CONTACT_ASSIGNMENT_HOST[1][1] = 2;
 
-	h_weekday_errand_contact_assignments_wholeDay[2][0] = 1;
-	h_weekday_errand_contact_assignments_wholeDay[2][1] = 1;
+	WEEKDAY_ERRAND_CONTACT_ASSIGNMENT_HOST[2][0] = 1;
+	WEEKDAY_ERRAND_CONTACT_ASSIGNMENT_HOST[2][1] = 1;
 
 	//DIFFERENT FORMAT: hours each of the 2 contacts are made in
 	//2 contacts in errand  0
-	h_weekend_errand_contact_assignments_wholeDay[0][0] = 0;
-	h_weekend_errand_contact_assignments_wholeDay[0][1] = 0;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[0][0] = 0;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[0][1] = 0;
 
 	//2 contacts in errand 1
-	h_weekend_errand_contact_assignments_wholeDay[1][0] = 1;
-	h_weekend_errand_contact_assignments_wholeDay[1][1] = 1;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[1][0] = 1;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[1][1] = 1;
 
 	//2 contacts in errand 2
-	h_weekend_errand_contact_assignments_wholeDay[2][0] = 2;
-	h_weekend_errand_contact_assignments_wholeDay[2][1] = 2;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[2][0] = 2;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[2][1] = 2;
 
 	//contact in errand 0 and errand 1
-	h_weekend_errand_contact_assignments_wholeDay[3][0] = 0;
-	h_weekend_errand_contact_assignments_wholeDay[3][1] = 1;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[3][0] = 0;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[3][1] = 1;
 
 	//contact in errand 0 and errand 2
-	h_weekend_errand_contact_assignments_wholeDay[4][0] = 0;
-	h_weekend_errand_contact_assignments_wholeDay[4][1] = 2;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[4][0] = 0;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[4][1] = 2;
 
 	//contact in errand 1 and 2
-	h_weekend_errand_contact_assignments_wholeDay[5][0] = 1;
-	h_weekend_errand_contact_assignments_wholeDay[5][1] = 2;
-
-
-	//load lognorm1 as default profile - others will be used later
-	h_infectiousness_profile[0] = 0.002533572f;
-	h_infectiousness_profile[1] = 0.348252834f;
-	h_infectiousness_profile[2] = 0.498210218f;
-	h_infectiousness_profile[3] = 0.130145145f;
-	h_infectiousness_profile[4] = 0.018421298f;
-	h_infectiousness_profile[5] = 0.002158374f;
-	h_infectiousness_profile[6] = 0.000245489f;
-	h_infectiousness_profile[7] = 2.88922E-05f;
-	h_infectiousness_profile[8] = 3.61113E-06f;
-	h_infectiousness_profile[9] = 4.83901E-07f;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[5][0] = 1;
+	WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST[5][1] = 2;
 
 
 #pragma region profiles
-
 	//gamma1
-	h_infectiousness_profile_all[0][0] = 0.007339835f;
-	h_infectiousness_profile_all[0][1] = 0.332600216f;
-	h_infectiousness_profile_all[0][2] = 0.501192066f;
-	h_infectiousness_profile_all[0][3] = 0.142183447f;
-	h_infectiousness_profile_all[0][4] = 0.015675154f;
-	h_infectiousness_profile_all[0][5] = 0.000967407f;
-	h_infectiousness_profile_all[0][6] = 4.055E-05f;
-	h_infectiousness_profile_all[0][7] = 1.29105E-06f;
-	h_infectiousness_profile_all[0][8] = 3.34836E-08f;
-	h_infectiousness_profile_all[0][9] = 7.41011E-10f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][0] = 0.007339835f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][1] = 0.332600216f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][2] = 0.501192066f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][3] = 0.142183447f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][4] = 0.015675154f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][5] = 0.000967407f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][6] = 4.055E-05f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][7] = 1.29105E-06f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][8] = 3.34836E-08f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA1][9] = 7.41011E-10f;
 
 	//lognorm1
-	h_infectiousness_profile_all[1][0] = 0.002533572f;
-	h_infectiousness_profile_all[1][1] = 0.348252834f;
-	h_infectiousness_profile_all[1][2] = 0.498210218f;
-	h_infectiousness_profile_all[1][3] = 0.130145145f;
-	h_infectiousness_profile_all[1][4] = 0.018421298f;
-	h_infectiousness_profile_all[1][5] = 0.002158374f;
-	h_infectiousness_profile_all[1][6] = 0.000245489f;
-	h_infectiousness_profile_all[1][7] = 2.88922E-05f;
-	h_infectiousness_profile_all[1][8] = 3.61113E-06f;
-	h_infectiousness_profile_all[1][9] = 4.83901E-07f;
-
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][0] = 0.002533572f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][1] = 0.348252834f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][2] = 0.498210218f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][3] = 0.130145145f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][4] = 0.018421298f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][5] = 0.002158374f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][6] = 0.000245489f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][7] = 2.88922E-05f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][8] = 3.61113E-06f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM1][9] = 4.83901E-07f;
 
 	//weib1
-	h_infectiousness_profile_all[2][0] = 0.05927385f;
-	h_infectiousness_profile_all[2][1] = 0.314171688f;
-	h_infectiousness_profile_all[2][2] = 0.411588802f;
-	h_infectiousness_profile_all[2][3] = 0.187010054f;
-	h_infectiousness_profile_all[2][4] = 0.026934715f;
-	h_infectiousness_profile_all[2][5] = 0.001013098f;
-	h_infectiousness_profile_all[2][6] = 7.78449E-06f;
-	h_infectiousness_profile_all[2][7] = 9.29441E-09f;
-	h_infectiousness_profile_all[2][8] = 1.29796E-12f;
-	h_infectiousness_profile_all[2][9] = 0;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][0] = 0.05927385f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][1] = 0.314171688f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][2] = 0.411588802f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][3] = 0.187010054f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][4] = 0.026934715f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][5] = 0.001013098f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][6] = 7.78449E-06f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][7] = 9.29441E-09f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][8] = 1.29796E-12f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB1][9] = 0;
 
 	//gamma2
-	h_infectiousness_profile_all[3][0] = 0.04687299f;
-	h_infectiousness_profile_all[3][1] = 0.248505983f;
-	h_infectiousness_profile_all[3][2] = 0.30307952f;
-	h_infectiousness_profile_all[3][3] = 0.211008627f;
-	h_infectiousness_profile_all[3][4] = 0.11087006f;
-	h_infectiousness_profile_all[3][5] = 0.049241932f;
-	h_infectiousness_profile_all[3][6] = 0.019562658f;
-	h_infectiousness_profile_all[3][7] = 0.007179076f;
-	h_infectiousness_profile_all[3][8] = 0.002482875f;
-	h_infectiousness_profile_all[3][9] = 0.000820094f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][0] = 0.04687299f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][1] = 0.248505983f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][2] = 0.30307952f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][3] = 0.211008627f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][4] = 0.11087006f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][5] = 0.049241932f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][6] = 0.019562658f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][7] = 0.007179076f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][8] = 0.002482875f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_GAMMA2][9] = 0.000820094f;
 
 	//lognorm2
-	h_infectiousness_profile_all[4][0] = 0.028667712f;
-	h_infectiousness_profile_all[4][1] = 0.283445338f;
-	h_infectiousness_profile_all[4][2] = 0.319240133f;
-	h_infectiousness_profile_all[4][3] = 0.190123057f;
-	h_infectiousness_profile_all[4][4] = 0.093989959f;
-	h_infectiousness_profile_all[4][5] = 0.044155659f;
-	h_infectiousness_profile_all[4][6] = 0.020682822f;
-	h_infectiousness_profile_all[4][7] = 0.009841839f;
-	h_infectiousness_profile_all[4][8] = 0.00479234f;
-	h_infectiousness_profile_all[4][9] = 0.002393665f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][0] = 0.028667712f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][1] = 0.283445338f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][2] = 0.319240133f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][3] = 0.190123057f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][4] = 0.093989959f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][5] = 0.044155659f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][6] = 0.020682822f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][7] = 0.009841839f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][8] = 0.00479234f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_LOGNORM2][9] = 0.002393665f;
 
 	//weib2
-	h_infectiousness_profile_all[5][0] = 0.087866042f;
-	h_infectiousness_profile_all[5][1] = 0.223005225f;
-	h_infectiousness_profile_all[5][2] = 0.258992749f;
-	h_infectiousness_profile_all[5][3] = 0.208637267f;
-	h_infectiousness_profile_all[5][4] = 0.127489076f;
-	h_infectiousness_profile_all[5][5] = 0.061148649f;
-	h_infectiousness_profile_all[5][6] = 0.023406737f;
-	h_infectiousness_profile_all[5][7] = 0.007216643f;
-	h_infectiousness_profile_all[5][8] = 0.001802145f;
-	h_infectiousness_profile_all[5][9] = 0.00036581f;
-
-	for(int i = 3; i < 6; i++)
-		for(int j = 0; i < CULMINATION_PERIOD; i++)
-			h_infectiousness_profile_all[i][j] *= asymp_factor;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][0] = 0.087866042f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][1] = 0.223005225f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][2] = 0.258992749f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][3] = 0.208637267f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][4] = 0.127489076f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][5] = 0.061148649f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][6] = 0.023406737f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][7] = 0.007216643f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][8] = 0.001802145f;
+	INFECTIOUSNESS_PROFILES_HOST[PROFILE_WEIB2][9] = 0.00036581f;
 
 #pragma endregion profiles
 
 	//store kvals - all 1 except for no-contact
-	h_kval_lookup[CONTACT_TYPE_NONE] = 0;
+	KVAL_LOOKUP_HOST[CONTACT_TYPE_NONE] = 0;
 	for(int i = CONTACT_TYPE_NONE + 1; i < NUM_CONTACT_TYPES;i++)
-		h_kval_lookup[i] = 1;
+		KVAL_LOOKUP_HOST[i] = 1;
+
+	//adjust the asymptomatic profiles downwards
+	for(int i = 3; i < NUM_PROFILES; i++)
+		for(int j = 0; i < CULMINATION_PERIOD; i++)
+			INFECTIOUSNESS_PROFILES_HOST[i][j] *= asymp_factor;
+
+	//calculate reproduction factors
+	for(int i = 0; i < STRAIN_COUNT; i++)
+	{
+		INFECTIOUSNESS_FACTOR_HOST[i] = BASE_REPRODUCTION_HOST[i] / ((1.0f - asymp_factor) * PERCENT_SYMPTOMATIC_HOST);
+	}
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(-1,1);
 }
 
 //push various things to device constant memory
 void PandemicSim::setup_pushDeviceData()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(-1,"setup_pushDeviceData");
+
+	//data for generating households
+	cudaMemcpyToSymbol(
+		HOUSEHOLD_TYPE_CDF_DEVICE,
+		HOUSEHOLD_TYPE_CDF_HOST,
+		sizeof(float) * HH_TABLE_ROWS);
+	cudaMemcpyToSymbol(
+		HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE,
+		HOUSEHOLD_TYPE_ADULT_COUNT_HOST,
+		sizeof(int) * HH_TABLE_ROWS);
+	cudaMemcpyToSymbol(
+		HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE,
+		HOUSEHOLD_TYPE_CHILD_COUNT_HOST,
+		sizeof(int) * HH_TABLE_ROWS);
+
+	//data for assigning children age and school
+	cudaMemcpyToSymbol(
+		CHILD_AGE_CDF_DEVICE,
+		CHILD_AGE_CDF_HOST,
+		sizeof(float) * CHILD_DATA_ROWS);
+	cudaMemcpyToSymbol(
+		CHILD_AGE_SCHOOLTYPE_LOOKUP_DEVICE,
+		CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST,
+		sizeof(int) * CHILD_DATA_ROWS);
+
+	//data for assigning workplaces
+	cudaMemcpyToSymbol(
+		WORKPLACE_TYPE_ASSIGNMENT_PDF_DEVICE,
+		WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST,
+		sizeof(float) * NUM_BUSINESS_TYPES);
+
 	//workplace location data
 	cudaMemcpyToSymbol(
-		business_type_count,
-		h_workplace_type_counts,
+		WORKPLACE_TYPE_COUNT_DEVICE,
+		WORKPLACE_TYPE_COUNT_HOST,
 		sizeof(int) * NUM_BUSINESS_TYPES);
 	cudaMemcpyToSymbol(
-		business_type_count_offset,
-		h_workplace_type_offset,
+		WORKPLACE_TYPE_OFFSET_DEVICE,
+		WORKPLACE_TYPE_OFFSET_HOST,
 		sizeof(int) * NUM_BUSINESS_TYPES);
 	cudaMemcpyToSymbol(
-		business_type_max_contacts,
-		h_workplace_max_contacts,
+		WORKPLACE_TYPE_MAX_CONTACTS_DEVICE,
+		WORKPLACE_TYPE_MAX_CONTACTS_HOST,
 		sizeof(int) * NUM_BUSINESS_TYPES);
 
 	//weekday+weekend errand PDFs
 	cudaMemcpyToSymbol(
-		weekday_errand_pdf,
-		h_weekday_errand_pdf,
+		WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_DEVICE,
+		WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_HOST,
 		sizeof(float) * NUM_BUSINESS_TYPES);
 	cudaMemcpyToSymbol(
-		weekend_errand_pdf,
-		h_weekend_errand_pdf,
+		WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_DEVICE,
+		WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_HOST,
 		sizeof(float) * NUM_BUSINESS_TYPES);
 
-	//viral shedding profile
-	cudaMemcpyToSymbol(
-		infectiousness_profile,
-		h_infectiousness_profile,
-		sizeof(float) * CULMINATION_PERIOD);
-
-	//reproduction numbers
-	cudaMemcpyToSymbol(
-		BASE_REPRODUCTION_DEVICE,
-		BASE_REPRODUCTION_HOST,
-		sizeof(float) * STRAIN_COUNT);
 
 	//alternate weekend contacts_desired assignment mode
 	cudaMemcpyToSymbol(
-		weekend_errand_contact_assignments_wholeDay,
-		h_weekend_errand_contact_assignments_wholeDay,
+		WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_DEVICE,
+		WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_HOST,
 		sizeof(int) * 6 * 2);
 
 	cudaMemcpyToSymbol(
-		weekday_errand_contact_assignments_wholeDay,
-		h_weekday_errand_contact_assignments_wholeDay,
+		WEEKDAY_ERRAND_CONTACT_ASSIGNMENTS_DEVICE,
+		WEEKDAY_ERRAND_CONTACT_ASSIGNMENT_HOST,
 		sizeof(int) * 3 * 2);
 
 	//seeds
@@ -630,187 +656,43 @@ void PandemicSim::setup_pushDeviceData()
 
 	//kvals
 	cudaMemcpyToSymbol(
-		kval_lookup,
-		h_kval_lookup,
+		KVAL_LOOKUP_DEVICE,
+		KVAL_LOOKUP_HOST,
 		sizeof(kval_t) * NUM_CONTACT_TYPES);
 
+	//copy adjusted reproduction numbers
+	cudaMemcpyToSymbol(
+		INFECTIOUSNESS_FACTOR_DEVICE,
+		INFECTIOUSNESS_FACTOR_HOST,
+		sizeof(float) * STRAIN_COUNT);
+
+	cudaMemcpyToSymbol(
+		&PERCENT_SYMPTOMATIC_DEVICE,
+		&PERCENT_SYMPTOMATIC_HOST,
+		sizeof(float) * 1);
+
 	cudaDeviceSynchronize();
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(-1,1);
 }
 
-//Sets up people's households and workplaces according to the probability functions
-void PandemicSim::setup_generateHouseholds()
-{
-	//actual expected value: 2.5
-	int expected_people = 3 * number_households;
-
-	//stores household and workplace data for all people
-	thrust::host_vector<int> h_people_hh;
-	thrust::host_vector<int> h_people_wp;
-	thrust::host_vector<int> h_people_age;
-	h_people_hh.reserve(expected_people);
-	h_people_wp.reserve(expected_people);
-	h_people_age.reserve(expected_people);
-
-	//stores the list of adults and children for weekday errands/afterschool
-	thrust::host_vector<int> h_adult_indexes;
-	thrust::host_vector<int> h_child_indexes;
-	h_adult_indexes.reserve(expected_people);
-	h_child_indexes.reserve(expected_people);
-
-	//count number of people
-	number_people = 0;
-
-	for(int hh = 0; hh < number_households; hh++)
-	{
-		//fish out the type of household from CDF
-		float y = (float) rand() / RAND_MAX;
-		int hh_type = 0;
-		while(y > hh_type_cdf[hh_type] && hh_type < HH_TABLE_ROWS - 1)
-			hh_type++;
-
-		//generate the adults for this household
-		for(int i = 0; i < hh_adult_count[hh_type]; i++)
-		{
-			//assign adult workplace
-			int wp = setup_assignWorkplace();
-			h_people_wp.push_back(wp);
-
-			//assign household
-			h_people_hh.push_back(hh);
-
-			//store as adult
-			h_adult_indexes.push_back(number_people);
-			h_people_age.push_back(AGE_ADULT);
-
-			number_people++;
-		}
-
-		//generate the children for this household
-		for(int i = 0; i < hh_child_count[hh_type]; i++)
-		{
-			//assign school
-			int wp, age;
-			setup_assignSchool(&wp, &age);
-			h_people_wp.push_back(wp);
-
-			//assign household
-			h_people_hh.push_back(hh);
-
-			//store as child
-			h_child_indexes.push_back(number_people);
-			h_people_age.push_back(age);
-			
-
-			number_people++;
-		}
-	}
-
-	//trim arrays to data size, and transfer them to GPU
-	h_people_wp.shrink_to_fit();
-	people_workplaces = h_people_wp;
-
-	h_people_hh.shrink_to_fit();
-	people_households = h_people_hh;
-
-	h_people_age.shrink_to_fit();
-	people_ages = h_people_age;
-
-	h_adult_indexes.shrink_to_fit();
-	people_adult_indexes = h_adult_indexes;
-
-	h_child_indexes.shrink_to_fit();
-	people_child_indexes = h_child_indexes;
-
-	number_adults = h_adult_indexes.size();
-	number_children = h_child_indexes.size();
-
-	printf("%d households, %d adults, %d children, %d total\n",
-		number_households, number_adults, number_children, number_people);
-
-	//setting up status array will be handled in setupSim()
-}
-
-int PandemicSim::setup_assignWorkplace()
-{
-	//fish out workplace type
-	float y = (float) rand() / RAND_MAX;
-	int row = 0;
-	while(workplace_type_pdf[row] < y && row < NUM_BUSINESS_TYPES - 1)
-	{
-		y -= workplace_type_pdf[row];
-		row++;
-	}
-
-	//of this workplace type, which number is this?
-	float frac = y / workplace_type_pdf[row];
-	int type_count = h_workplace_type_counts[row];
-	int business_num = frac * type_count;  //truncate to int
-
-	if(business_num >= type_count)
-		business_num = type_count - 1;
-
-	//how many other workplaces have we gone past?
-	int type_offset = h_workplace_type_offset[row];
-
-	//	printf("row: %d\ty: %f\tpdf[row]: %f\tfrac: %f\tret: %4d\toffset:%d\n",
-	//			row, y, workplace_type_pdf[row], frac, ret, offset);
-
-
-	return business_num + type_offset;
-}
-
-void PandemicSim::setup_assignSchool(int * wp, int * age)
-{
-	//fish out age group and resulting school type from CDF
-	int row = 0;
-	float y = (float) rand() / RAND_MAX;
-	while(row < CHILD_DATA_ROWS - 1 && y > child_CDF[row])
-		row++;
-
-
-	int wp_type = child_wp_types[row];
-
-	//of this school type, which one will this kid be assigned to?
-	float frac;
-	if(row == 0)
-		frac = y / (child_CDF[row]);
-	else
-	{
-		float pdf_here = child_CDF[row] - child_CDF[row - 1];
-		float y_here = y - child_CDF[row - 1];
-		//	printf("y here: %f\tpdf here: %f\n", (y - child_CDF[row - 1]), pdf);
-		frac =  y_here / pdf_here;
-	}
-
-	int type_count = h_workplace_type_counts[wp_type];
-	int business_num = frac * type_count;
-
-	if(business_num >= type_count)
-		business_num = type_count - 1;
-
-	//how many other workplaces have we gone past?
-	int type_offset = h_workplace_type_offset[wp_type];
-	(*wp) = business_num + type_offset;
-	(*age) = row;
-}
 
 
 //Sets up the initial infection at the beginning of the simulation
 //BEWARE: you must not generate dual infections with this code, or you will end up with duplicate infected indexes
 void PandemicSim::setup_initialInfected()
 {
-	//fill infected array with null info (not infected)
-	thrust::fill(infected_days_pandemic.begin(), infected_days_pandemic.end(), DAY_NOT_INFECTED);
-	thrust::fill(infected_days_seasonal.begin(), infected_days_seasonal.end(), DAY_NOT_INFECTED);
-	thrust::fill(infected_generation_pandemic.begin(), infected_generation_pandemic.end(), GENERATION_NOT_INFECTED);
-	thrust::fill(infected_generation_seasonal.begin(), infected_generation_seasonal.end(), GENERATION_NOT_INFECTED);
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day,"setup_initialInfected");
 
+	//fill infected array with null info (not infected)
 	int initial_infected = INITIAL_INFECTED_PANDEMIC + INITIAL_INFECTED_SEASONAL;
 
 	//get N unique indexes - they should not be sorted
 	h_vec h_init_indexes(initial_infected);
 	n_unique_numbers(&h_init_indexes, initial_infected, number_people);
-	thrust::copy(h_init_indexes.begin(), h_init_indexes.end(), infected_indexes.begin());
+	thrust::copy_n(h_init_indexes.begin(), initial_infected, infected_indexes.begin());
 
 	///// INFECTED PANDEMIC:
 	//infect first INITIAL_INFECTED_PANDEMIC people with pandemic
@@ -822,12 +704,12 @@ void PandemicSim::setup_initialInfected()
 
 	//set day/generation pandemic to 0 (initial)
 	thrust::fill(
-		infected_days_pandemic.begin(), 		//begin
-		infected_days_pandemic.begin() + INITIAL_INFECTED_PANDEMIC, //end
+		thrust::make_permutation_iterator(people_days_pandemic.begin(), infected_indexes.begin()),	//begin at infected 0
+		thrust::make_permutation_iterator(people_days_pandemic.begin(), infected_indexes.begin() + INITIAL_INFECTED_PANDEMIC),	//end at index INITIAL_INFECTED_PANDEMIC
 		INITIAL_DAY);//val
 	thrust::fill(
-		infected_generation_pandemic.begin(),
-		infected_generation_pandemic.begin() + INITIAL_INFECTED_PANDEMIC,
+		thrust::make_permutation_iterator(people_gens_pandemic.begin(), infected_indexes.begin()),	//begin at infected 0
+		thrust::make_permutation_iterator(people_gens_pandemic.begin(), infected_indexes.begin() + INITIAL_INFECTED_PANDEMIC),	//end at index INITIAL_INFECTED_PANDEMIC
 		0);	//fill infected with gen 0
 
 	///// INFECTED SEASONAL:
@@ -839,39 +721,29 @@ void PandemicSim::setup_initialInfected()
 
 	//set day/generation seasonal to 0
 	thrust::fill(
-		infected_generation_seasonal.begin() + INITIAL_INFECTED_PANDEMIC,
-		infected_generation_seasonal.begin() + INITIAL_INFECTED_PANDEMIC + INITIAL_INFECTED_SEASONAL,
-		0);	//first generation
-	thrust::fill(
-		infected_days_seasonal.begin() + INITIAL_INFECTED_PANDEMIC,
-		infected_days_seasonal.begin() + INITIAL_INFECTED_PANDEMIC + INITIAL_INFECTED_SEASONAL,
+		thrust::make_permutation_iterator(people_days_seasonal.begin(), infected_indexes.begin()+ INITIAL_INFECTED_PANDEMIC), //begin at index INITIAL_INFECTED_PANDEMIC
+		thrust::make_permutation_iterator(people_days_seasonal.begin(), infected_indexes.begin() + INITIAL_INFECTED_PANDEMIC + INITIAL_INFECTED_SEASONAL),	//end INITIAL_INFECTED_PANDEMIC + INITIAL_INFECTED_SEASONAL
 		INITIAL_DAY);		//day: 0
+	thrust::fill(
+		thrust::make_permutation_iterator(people_gens_seasonal.begin(), infected_indexes.begin()+ INITIAL_INFECTED_PANDEMIC), //begin at index INITIAL_INFECTED_PANDEMIC
+		thrust::make_permutation_iterator(people_gens_seasonal.begin(), infected_indexes.begin() + INITIAL_INFECTED_PANDEMIC + INITIAL_INFECTED_SEASONAL),	//end INITIAL_INFECTED_PANDEMIC + INITIAL_INFECTED_SEASONAL
+		0);	//first generation
 
-	//sort array after infection complete
-	thrust::sort(
-		thrust::make_zip_iterator(thrust::make_tuple(			//first
-		infected_indexes.begin(),
-		infected_days_pandemic.begin(),infected_days_seasonal.begin(),
-		infected_generation_pandemic.begin(),infected_generation_seasonal.begin())),
-		thrust::make_zip_iterator(thrust::make_tuple(			//first
-		infected_indexes.begin() + initial_infected,
-		infected_days_pandemic.begin() + initial_infected,infected_days_seasonal.begin() + initial_infected,
-		infected_generation_pandemic.begin() + initial_infected,infected_generation_seasonal.begin() + initial_infected)),
-		FiveTuple_SortByFirst_Struct());
-
-	infected_count = initial_infected;
-	reproduction_count_pandemic[0] = INITIAL_INFECTED_PANDEMIC;
-	reproduction_count_seasonal[0] = INITIAL_INFECTED_SEASONAL;
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day,initial_infected);
 }
 
 //sets up the locations which are the same every day and do not change
 //i.e. workplace and household
 void PandemicSim::setup_buildFixedLocations()
 {
+	profiler.beginFunction(-1,"setup_buildFixedLocations");
 	///////////////////////////////////////
 	//home/////////////////////////////////
-	household_offsets.resize(number_households + 1);
-	household_people.resize(number_people);
+
+	//moved to size_global_arrays func
+	//household_offsets.resize(number_households + 1);
+	//household_people.resize(number_people);
 
 	thrust::sequence(household_people.begin(), household_people.begin() + number_people);	//fill array with IDs to sort
 	calcLocationOffsets(
@@ -882,8 +754,8 @@ void PandemicSim::setup_buildFixedLocations()
 
 	///////////////////////////////////////
 	//work/////////////////////////////////
-	workplace_offsets.resize(number_workplaces + 1);	//size arrays
-	workplace_people.resize(number_people);
+	//workplace_offsets.resize(number_workplaces + 1);	//size arrays
+	//workplace_people.resize(number_people);
 
 	thrust::sequence(workplace_people.begin(), workplace_people.begin() + number_people);	//fill array with IDs to sort
 
@@ -898,13 +770,16 @@ void PandemicSim::setup_buildFixedLocations()
 
 	//copy the number of contacts per location type to device
 	vec_t workplace_type_max_contacts(NUM_BUSINESS_TYPES);		
-	thrust::copy_n(h_workplace_max_contacts, NUM_BUSINESS_TYPES, workplace_type_max_contacts.begin());
+	thrust::copy_n(WORKPLACE_TYPE_MAX_CONTACTS_HOST, NUM_BUSINESS_TYPES, workplace_type_max_contacts.begin());
 
 	//TODO:  make this work right with device constant memory.  For now, just make a copy in global memory
 	vec_t business_type_count_vec(NUM_BUSINESS_TYPES);
-	thrust::copy_n(h_workplace_type_counts,NUM_BUSINESS_TYPES,business_type_count_vec.begin());
+	thrust::copy_n(WORKPLACE_TYPE_COUNT_HOST,NUM_BUSINESS_TYPES,business_type_count_vec.begin());
 	vec_t business_type_count_offset_vec(NUM_BUSINESS_TYPES);
 	thrust::exclusive_scan(business_type_count_vec.begin(), business_type_count_vec.end(), business_type_count_offset_vec.begin());
+
+	debug_dump_array_toTempFile("../business_type_count.txt","count",&business_type_count_vec,NUM_BUSINESS_TYPES);
+	exit(0);
 
 	//scatter code is based on Thrust example: expand.cu
 	//first, scatter the indexes of the type of business into the array mapped by the output offset
@@ -916,7 +791,6 @@ void PandemicSim::setup_buildFixedLocations()
 		business_type_count_vec.begin(),			//stencil: no predicate given means scatter if the count for a type is >0
 		workplace_max_contacts.begin());
 
-	
 	//next, use a max_scan to fill in the holes, so all entries in max_contacts hold the index of their business type
 	thrust::inclusive_scan(
 		workplace_max_contacts.begin(),
@@ -930,6 +804,9 @@ void PandemicSim::setup_buildFixedLocations()
 		workplace_max_contacts.end(),
 		workplace_type_max_contacts.begin(),
 		workplace_max_contacts.begin());
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(-1,number_people);
 }
 
 
@@ -942,6 +819,9 @@ void PandemicSim::calcLocationOffsets(
 	vec_t * location_offsets,
 	int num_people, int num_locs)
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(-1, "calcLocationOffsets");
+
 	//sort people by workplace
 	thrust::sort_by_key(
 		lookup_table_copy.begin(),
@@ -973,21 +853,11 @@ void PandemicSim::calcLocationOffsets(
 	}
 
 	(*location_offsets)[num_locs] = num_people;
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(-1,number_people);
 }
 
-void PandemicSim::dump_people_info()
-{
-	h_vec h_wp = people_workplaces;
-	h_vec h_hh = people_households;
-
-	FILE * fPeopleInfo = fopen("../debug_people_info.csv.gz", "w");
-	fprintf(fPeopleInfo, "i,workplace,household\n");
-	for(int i = 0; i < number_people; i++)
-	{
-		fprintf(fPeopleInfo, "%d,%d,%d\n", i, h_wp[i], h_hh[i]);
-	}
-	fclose(fPeopleInfo);
-}
 
 void PandemicSim::logging_closeOutputStreams()
 {
@@ -1018,7 +888,6 @@ void PandemicSim::logging_closeOutputStreams()
 
 	fclose(fDebug);
 	fclose(f_outputInfectedStats);
-	profiler.done();
 } 
 
 
@@ -1040,30 +909,23 @@ void PandemicSim::runToCompletion()
 		{
 			printf("Day %d:\tinfected: %5d\n", current_day + 1, infected_count);
 		}
-		daily_contacts = 0;	//start counting contacts/actions from 0 each day
+
 		daily_actions = 0;
 
-		/*
-		//resize contacts array to fit expected number of contacts
-		int contacts_expected;
-		if(is_weekend())
-			contacts_expected = 5; //3 home, 2 errand
-		else
-			contacts_expected = 8; //3 home, 2 work, 3 afterschool
-
-		contacts_expected *= infected_count;
-		daily_contact_infectors.resize(contacts_expected);
-		daily_contact_victims.resize(contacts_expected);
-		//daily_contact_kvals.resize(contacts_expected);*/
-		
 		if(debug_null_fill_daily_arrays)
 			debug_nullFillDailyArrays();
+
+		//build infected index array
+		daily_buildInfectedArray_global();
+		daily_countInfectedStats();
+
+		exit(0);
 
 		//debug: dump infected info?
 		if(log_infected_info || print_infected_info)
 		{
 //			debug_validate_infected();
-			dump_infected_info();
+//			dump_infected_info();
 		}
 
 		//MAKE CONTACTS DEPENDING ON TYPE OF DAY
@@ -1085,7 +947,8 @@ void PandemicSim::runToCompletion()
 			profiler.dailyFlush();
 		}
 	}
-	calculateFinalReproduction();
+
+	final_countReproduction();
 
 	if(PROFILE_SIMULATION)
 		profiler.endFunction(-1, number_people);
@@ -1095,170 +958,6 @@ void PandemicSim::runToCompletion()
 	//close_output_streams();
 }
 
-
-//called at the end of the simulation, figures out the reproduction numbers for each generation
-void PandemicSim::calculateFinalReproduction()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "calculateFinalReproduction");
-
-	//copy to host
-	thrust::host_vector<int> r_pandemic = reproduction_count_pandemic;
-	thrust::host_vector<int> r_seasonal = reproduction_count_seasonal;
-
-	FILE * out = fopen("../output_rn.csv", "w");
-	fprintf(out, "gen, size_p, rn_p, size_s, rn_s\n");
-
-	//loop and calculate reproduction
-	for(int i = 0; i < MAX_DAYS - 1; i++)
-	{
-		int gen_size_p = r_pandemic[i];
-		int gen_size_s = r_seasonal[i];
-
-		float rn_pandemic = (float) r_pandemic[i+1] / gen_size_p;
-		float rn_seasonal = (float) r_seasonal[i+1] / gen_size_s;
-
-		fprintf(out, "%d, %d, %f, %d, %f\n",
-			i, gen_size_p, rn_pandemic, gen_size_s, rn_seasonal);
-
-		gen_size_p = r_pandemic[i];
-		gen_size_s = r_seasonal[i];
-	}
-	fclose(out);
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, MAX_DAYS);
-} 
-
-void PandemicSim::debug_validate_infected()
-{
-	//ASSERT:  ALL INFECTED ARRAYS ARE THE CORRECT/SAME SIZE
-	debug_assert("infected_indexes.size() != infected_count", infected_indexes.size(), infected_count);
-	debug_assert("infected_days_pandemic.size() != infected_count", infected_days_pandemic.size(), infected_count);
-	debug_assert("infected_days_seasonal.size() != infected_count", infected_days_seasonal.size(), infected_count);
-	debug_assert("infected_generation_pandemic.size() != infected_count", infected_generation_pandemic.size(), infected_count);
-	debug_assert("infected_generation_seasonal.size() != infected_count", infected_generation_seasonal.size(), infected_count);
-
-	//ASSERT:  INFECTED INDEXES ARE SORTED
-	bool sorted = thrust::is_sorted(infected_indexes.begin(), infected_indexes.begin() + infected_count);
-	debug_assert(sorted, "infected indexes are not sorted");
-
-	//ASSERT:  INFECTED INDEXES ARE UNIQUE
-	d_vec unique_indexes(infected_count);
-	IntIterator end = thrust::unique_copy(infected_indexes.begin(), infected_indexes.begin() + infected_count, unique_indexes.begin());
-	int unique_count  = end - unique_indexes.begin();
-	debug_assert("infected_indexes are not unique", infected_count, unique_count);
-
-
-	//copy infected data to PC
-	h_vec h_ii = infected_indexes;
-	h_vec h_day_p = infected_days_pandemic;
-	h_vec h_day_s = infected_days_seasonal;
-	h_vec h_gen_p = infected_generation_pandemic;
-	h_vec h_gen_s = infected_generation_seasonal;
-
-	h_vec h_p_status_p = people_status_pandemic;
-	h_vec h_p_status_s = people_status_seasonal;
-
-	//begin intensive check of infected
-	for(int i = 0; i < infected_count; i++)
-	{
-		int idx = h_ii[i];
-		int day_p = h_day_p[i];
-		int gen_p = h_gen_p[i];
-		int day_s = h_day_s[i];
-		int gen_s = h_gen_s[i];
-
-		int status_p = h_p_status_p[idx];
-		int status_s = h_p_status_s[idx];
-
-		//ASSERT: person on infected list is infected with pandemic or seasonal
-		bool has_infection = status_p || status_s;
-		debug_assert(has_infection, "infected_index has no infection", idx);
-
-		if(status_p == STATUS_INFECTED)
-		{
-			//check that day of pandemic infection is within bounds
-			debug_assert(day_p > DAY_NOT_INFECTED, "status_p infected but day not set", idx);
-			debug_assert(day_p <= current_day, "day_p is after today", idx);
-			int day_of_infection = current_day - day_p;
-			debug_assert(day_of_infection < CULMINATION_PERIOD, "pandemic infection should have been recovered", idx);
-
-			//check that generation is within bounds
-			debug_assert(gen_p > GENERATION_NOT_INFECTED, "status_p infected but generation not set", idx);
-			debug_assert(gen_p <= current_day, "generation_p too high", idx);
-		}
-		else
-		{
-			//NOT INFECTED - these should not be set to valid data!
-			debug_assert(day_p == DAY_NOT_INFECTED, "status_p not infected but day is set", idx);
-			debug_assert(gen_p == GENERATION_NOT_INFECTED, "status_p not infected but gen is set", idx);
-		}
-
-		if(status_s == STATUS_INFECTED)
-		{
-			//check that day of seasonal infection is within bounds
-			debug_assert(day_s > DAY_NOT_INFECTED, "status_s infected but day not set", idx);
-			debug_assert(day_s <= current_day, "day_s is after today", idx);
-			int day_of_infection = current_day - day_s;
-			debug_assert(day_of_infection < CULMINATION_PERIOD, "seasonal infection should have been recovered", idx);
-
-			//check that generation is within bounds
-			debug_assert(gen_s > GENERATION_NOT_INFECTED, "status_s infected but generation not set", idx);
-			debug_assert(gen_s <= current_day, "generation_s too high", idx);
-		}
-		else
-		{
-			//NOT INFECTED - these should not be set to valid data!
-			debug_assert(day_s == DAY_NOT_INFECTED, "status_s not infected but day is set", idx);
-			debug_assert(gen_s == GENERATION_NOT_INFECTED, "status_s not infected but gen is set", idx);
-		}
-	}
-
-	fflush(fDebug);
-}
-
-//dumps all infected info to disk
-//this is a big consumer of disk space, so it uses zlib to compress
-//use zcat to dump the file
-void PandemicSim::dump_infected_info()
-{
-	//copy to host PC
-	h_vec h_ii(infected_count);
-	thrust::copy_n(infected_indexes.begin(), infected_count, h_ii.begin());
-	h_vec h_day_p(infected_count);
-	thrust::copy_n(infected_days_pandemic.begin(), infected_count, h_day_p.begin());
-	h_vec h_day_s(infected_count);
-	thrust::copy_n(infected_days_seasonal.begin(), infected_count, h_day_s.begin());
-	h_vec h_gen_p(infected_count);
-	thrust::copy_n(infected_generation_pandemic.begin(), infected_count, h_gen_p.begin());
-	h_vec h_gen_s(infected_count);
-	thrust::copy_n(infected_generation_seasonal.begin(), infected_count, h_gen_s.begin());
-
-	h_vec h_p_status_p = people_status_pandemic;
-	h_vec h_p_status_s = people_status_seasonal;
-
-	//iterate and dump data
-	for(int i = 0; i < infected_count; i++)
-	{
-		int idx = h_ii[i];
-		int status_p = h_p_status_p[idx];
-		int status_s = h_p_status_s[idx];
-		int d_p = h_day_p[i];
-		int g_p = h_gen_p[i];
-		int d_s = h_day_s[i];
-		int g_s = h_gen_s[i];
-
-		//day, i, idx, status_p, day_p, gen_p, status_s, day_s, gen_s
-		fprintf(fInfected, "%d, %d, %d, %c, %d, %d, %c, %d, %d\n",
-			current_day, i, idx, 
-			status_int_to_char(status_p), d_p, g_p,
-			status_int_to_char(status_s), d_s, g_s);
-	}
-//	gzflush(fInfected, Z_SYNC_FLUSH);
-	fflush(fInfected);
-	fflush(fDebug);
-}
 
 //copies indexes 3 times into array, i.e. for IDS 1-3 produces array:
 // 1 2 3 1 2 3 1 2 3
@@ -1307,19 +1006,19 @@ __device__ void device_fishWeekendErrandDestination(unsigned int * rand_val, int
 	float y = (float) *rand_val / UNSIGNED_MAX;
 
 	int row = FIRST_WEEKEND_ERRAND_ROW;
-	while(y > weekend_errand_pdf[row] && row < (NUM_BUSINESS_TYPES - 1))
+	while(y > WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_DEVICE[row] && row < (NUM_BUSINESS_TYPES - 1))
 	{
-		y -= weekend_errand_pdf[row];
+		y -= WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_DEVICE[row];
 		row++;
 	}
-	float frac = y / weekend_errand_pdf[row];
-	int type_count = business_type_count[row];
+	float frac = y / WORKPLACE_TYPE_WEEKEND_ERRAND_PDF_DEVICE[row];
+	int type_count = WORKPLACE_TYPE_COUNT_DEVICE[row];
 	int business_num = frac * type_count;
 
 	if(business_num >= type_count)
 		business_num = type_count - 1;
 
-	int type_offset = business_type_count_offset[row];
+	int type_offset = WORKPLACE_TYPE_OFFSET_DEVICE[row];
 
 	*output_ptr = business_num + type_offset;
 }
@@ -1333,34 +1032,17 @@ void PandemicSim::dailyUpdate()
 	if(debug_log_function_calls)
 		debug_print("beginning daily update");
 
-	if(CONSOLE_OUTPUT)
-	{
-		printf("average: %.2f contacts per infected\n", (float) daily_contacts / infected_count);
-	}
-
-
 	//process contacts into actions
-	daily_contactsToActions();
+	daily_contactsToActions_new();
 
 	//filter invalid actions - not susceptible, duplicate, etc
-	daily_filterActions();
+	daily_filterActions_new();
 
-	if(log_actions_filtered || print_actions_filtered)
-		dump_actions_filtered();
+	//do infection actions
+	daily_doInfectionActions();
 
-	//counts the number of each generation in today's new infections 
-//	daily_countReproductionNumbers(ACTION_INFECT_PANDEMIC);
-//	daily_countReproductionNumbers(ACTION_INFECT_SEASONAL);
-
-	//heals infected who are reaching culmination, and adds newly infected people
-//	daily_rebuildInfectedArray();
-
-
-	if(CONSOLE_OUTPUT)
-	{
-		printf("now %d infected\n",infected_count);
-		printf("update complete\n");
-	}
+	//recover infected who have reached culmination
+	daily_recoverInfected_new();
 
 	if(debug_log_function_calls)
 		debug_print("daily update complete");
@@ -1370,751 +1052,12 @@ void PandemicSim::dailyUpdate()
 }
 
 
-//once the contacts have been properly set up, this kernel determines whether each contact
-//is successful, and then outputs actions
-__global__ void contacts_to_actions_kernel(
-		int * output_offset_arr,
-		int * inf_gen_p_arr, int * inf_gen_s_arr,
-		int * day_p_arr, int * day_s_arr,
-		int * action_types_arr,  
-		int * victim_gen_p_arr, int * victim_gen_s_arr,
-		// float * rand_1, float * rand_2, float* rand_3, float * rand_4,
-		int num_infected, int global_rand_offset, int current_day)
-{
-	threefry2x32_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
-	union{
-		threefry2x32_ctr_t c;
-		unsigned int i[2];
-	} u;
-	
-	//for each infected person
-	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
-	{
-		//output_offset holds the index where this action should be stored
-		int output_offset = output_offset_arr[myPos];
-
-		//how many contacts we're trying to make
-		int contacts_desired = output_offset_arr[myPos + 1] - output_offset_arr[myPos];
-
-		//these are the day this person was infected (from 0 to MAX_DAYS) - NOT which day of infection they are on
-		int day_p = day_p_arr[myPos];
-		int day_s = day_s_arr[myPos];
-
-		//if they make a successful contact, the victim will receive these generations
-		int victim_gen_p = GENERATION_NOT_INFECTED;
-		int victim_gen_s = GENERATION_NOT_INFECTED;
-			
-		//start with zero probability of infection - if the person is infected, increase it
-		float inf_prob_p = 0.0;
-		
-		if(day_p >= 0)
-		{
-			inf_prob_p = (infectiousness_profile[current_day - day_p] * BASE_REPRODUCTION_DEVICE[0]) / (float) contacts_desired;
-			victim_gen_p = inf_gen_p_arr[myPos] + 1;
-		}
-			
-		//same for seasonal
-		float inf_prob_s = 0.0;
-	
-		if(day_s >= 0)
-		{
-			inf_prob_s = (infectiousness_profile[current_day - day_s] * BASE_REPRODUCTION_DEVICE[1]) / (float) contacts_desired;
-			victim_gen_s = inf_gen_s_arr[myPos] + 1;
-		}
-			
-		while(contacts_desired > 0)
-		{
-			//we need one random number set for each contact
-			int myRandOffset = output_offset + global_rand_offset;
-			
-			threefry2x32_ctr_t tf_ctr = {{myRandOffset,myRandOffset}};
-			u.c = threefry2x32(tf_ctr, tf_k);
-				
-			//convert uniform to float
-			float f_pandemic = (float) u.i[0] / UNSIGNED_MAX;
-			float f_seasonal = (float) u.i[1] / UNSIGNED_MAX;
-			
-			//if the random float is less than the infection threshold, infection succeeds
-			bool infects_pandemic = f_pandemic < inf_prob_p;
-			bool infects_seasonal = f_seasonal < inf_prob_s;
-				
-			//parse bools to action type
-			if(infects_pandemic && infects_seasonal)
-			{
-				action_types_arr[output_offset] = ACTION_INFECT_BOTH;
-				victim_gen_p_arr[output_offset] = victim_gen_p;
-				victim_gen_s_arr[output_offset] = victim_gen_s;
-			}
-			else if(infects_pandemic)
-			{
-				action_types_arr[output_offset] = ACTION_INFECT_PANDEMIC;
-				victim_gen_p_arr[output_offset] = victim_gen_p;
-			}
-			else if(infects_seasonal)
-			{
-				action_types_arr[output_offset] = ACTION_INFECT_SEASONAL;
-				victim_gen_s_arr[output_offset] = victim_gen_s;
-			}
-			else
-			{
-				action_types_arr[output_offset] = ACTION_INFECT_NONE;
-			}
-				
-			//for debug: we can output some internal values
-//			rand_1[output_offset] = inf_prob_p;
-//			rand_2[output_offset] = inf_prob_s;
-//			rand_3[output_offset] = f_pandemic;
-//			rand_4[output_offset] = f_seasonal;
-				
-			output_offset++;
-			contacts_desired--;
-		}
-	}
-}
-
-//starts the kernel to convert contacts to actions
-void PandemicSim::daily_contactsToActions()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "contacts_to_actions");
-	
-	if(debug_log_function_calls)
-		debug_print("beginning contacts-to-action setup");
-	
-	//size our action output arrays
-	//moved to setup function, only done once to prevent fragmentation
-
-	//get lower bound of each infector, aka index
-	d_vec infector_contacts_offset (infected_count + 1);
-	thrust::lower_bound(
-			daily_contact_infectors.begin(),		//data.begin
-			daily_contact_infectors.begin() + daily_contacts,		//data.end
-			infected_indexes.begin(),		//value to search for
-			infected_indexes.begin() + infected_count,			//value to search
-			infector_contacts_offset.begin());
-	infector_contacts_offset[infected_count] = daily_contacts;
-	
-	//convert thrust vectors to raw pointers
-	int * inf_offset_ptr = thrust::raw_pointer_cast(infector_contacts_offset.data());
-	
-	int * day_p_ptr = thrust::raw_pointer_cast(infected_days_pandemic.data());
-	int * day_s_ptr = thrust::raw_pointer_cast(infected_days_seasonal.data());
-
-	int * inf_gen_p_ptr = thrust::raw_pointer_cast(infected_generation_pandemic.data());
-	int * inf_gen_s_ptr = thrust::raw_pointer_cast(infected_generation_seasonal.data());
-
-	//stores what type of action resulted
-	int * actions_type_ptr = thrust::raw_pointer_cast(daily_action_type.data());
-
-	int * victim_gen_p_ptr = thrust::raw_pointer_cast(daily_action_victim_gen_p.data());
-	int * victim_gen_s_ptr = thrust::raw_pointer_cast(daily_action_victim_gen_s.data());
-	
-	//for debug: we can dump some internal stuff	
-	float* rand1ptr = thrust::raw_pointer_cast(debug_float1.data());
-	float* rand2ptr = thrust::raw_pointer_cast(debug_float2.data());
-	float* rand3ptr = thrust::raw_pointer_cast(debug_float3.data());
-	float* rand4ptr = thrust::raw_pointer_cast(debug_float4.data());
-
-	if(debug_log_function_calls)
-		debug_print("calling contacts-to-action kernel");
-
-	//determine whether each infection was successful
-	contacts_to_actions_kernel<<<cuda_blocks, cuda_threads>>>(
-			inf_offset_ptr,
-			inf_gen_p_ptr, inf_gen_s_ptr,
-			day_p_ptr, day_s_ptr,
-			actions_type_ptr, 
-			victim_gen_p_ptr, victim_gen_s_ptr,
-	//		rand1ptr, rand2ptr, rand3ptr, rand4ptr,
-			infected_count, rand_offset, current_day);
-
-	cudaDeviceSynchronize();
-	//copy the IDs of the infector and victim to the action array
-	thrust::copy_n(daily_contact_victims.begin(), daily_contacts, daily_action_victim_index.begin());
-	
-	rand_offset += daily_contacts; //increment rand counter
-	daily_actions = daily_contacts; //stores # of actions to allow dumping - set in filter after filtering
-
-
-	if(log_actions || print_actions)
-		dump_actions(
-//				rand1, rand2, rand3, rand4	//disable debug outputs from contacts kernel
-				);
-
-	/*
-	if(0){
-		h_vec actions = daily_action_type;
-		thrust::host_vector<float> h_rand1 = rand1;
-		thrust::host_vector<float> h_rand2 = rand2;
-		thrust::host_vector<float> h_rand3 = rand3;
-		thrust::host_vector<float> h_rand4 = rand4;
-		for(int i = 0; i < daily_contacts; i++)
-		{
-			float t_p = h_rand1[i];
-			float y_p = h_rand3[i];
-			float t_s = h_rand2[i];
-			float y_s = h_rand4[i];
-			printf("action: %s\tthresh_p:%f \ty_p: %f\tinfects_p: %d\tthresh_s: %f\ty_s: %f\tinfects_s: %d\n", action_type_to_char(actions[i]), t_p, y_p, y_p < t_p, t_s, y_s, y_s < t_s);
-		}
-	} */
-	
-
-	if(debug_log_function_calls)
-		debug_print("contacts_to_actions complete");
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-}
-
-//after the contacts_to_actions kernel runs, we need to filter out actions that are invalid and then remove no-ops
-void PandemicSim::daily_filterActions()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "filter_actions");
-
-	if(debug_log_function_calls)
-		debug_print("filtering contacts");
-
-
-	//if victim is not susceptible to the virus, turn action to none
-	thrust::transform(
-		daily_action_type.begin(),
-		daily_action_type.begin() + daily_contacts,
-		thrust::make_zip_iterator(thrust::make_tuple(
-			thrust::make_permutation_iterator(people_status_pandemic.begin(), daily_contact_victims.begin()),
-			thrust::make_permutation_iterator(people_status_seasonal.begin(), daily_contact_victims.begin()))),
-		daily_action_type.begin(),
-		filterPriorInfectedOp());
-	
-	//remove no infection
-	ZipIntQuadIterator filter_begin = thrust::make_zip_iterator(thrust::make_tuple(
-		daily_action_type.begin(), daily_action_victim_index.begin(), 
-		daily_action_victim_gen_p.begin(), daily_action_victim_gen_s.begin()));
-
-	ZipIntQuadIterator filter_end = thrust::remove_if(
-		filter_begin,
-		thrust::make_zip_iterator(thrust::make_tuple(
-			daily_action_type.begin() + daily_contacts, daily_action_victim_index.begin() + daily_contacts,
-			daily_action_victim_gen_p.begin() + daily_contacts, daily_action_victim_gen_s.begin() + daily_contacts)),
-		removeNoActionOp());
-
-	int remaining = filter_end - filter_begin;
-
-	if(CONSOLE_OUTPUT)
-	{
-		printf("%d unfiltered contacts\n", remaining);
-	}
-
-	//sort by victim, then by action
-	thrust::sort(
-		filter_begin,
-		filter_end,
-		actionSortOp());
-	//remove duplicate actions
-	filter_end = thrust::unique(	
-		filter_begin,
-		filter_end,
-		uniqueActionOp());
-
-	//after actions have been filtered, count how many remain
-	daily_actions = filter_end - filter_begin;
-
-	if(CONSOLE_OUTPUT)
-	{
-		printf("%d final contacts\n", daily_actions);
-	}
-
-	if(debug_log_function_calls)
-		debug_print("contact filtering complete");
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, daily_contacts);
-}
-
-//given an action type, look through the filtered actions and count generations
-void PandemicSim::daily_countReproductionNumbers(int action)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "daily_countReproductionNumbers");
-
-	if(debug_log_function_calls)
-		debug_print("counting reproduction");
-
-	//tests action type
-	infectionTypePred r_pred;
-	r_pred.reference_val = action;
-
-
-	//TODO: Fix
-	//"pandemic" is a bad word for this - to do seasonal, pass it the seasonal action type
-	d_vec pandemic_gens(daily_actions);
-	IntIterator gens_end;
-	if(action == ACTION_INFECT_PANDEMIC)
-	{
-		gens_end = thrust::copy_if(
-			daily_action_victim_gen_p.begin(),			//copy all generations from pandemic actions
-			daily_action_victim_gen_p.begin() + daily_actions,
-			daily_action_type.begin(),
-			pandemic_gens.begin(),
-			r_pred);
-
-	}
-	else if(action == ACTION_INFECT_SEASONAL)
-	{
-		gens_end = thrust::copy_if(
-			daily_action_victim_gen_s.begin(),		//copy all generations from seasonal actions 
-			daily_action_victim_gen_s.begin() + daily_actions,
-			daily_action_type.begin(),
-			pandemic_gens.begin(),
-			r_pred);
-	}
-	else
-	{
-		throw;
-	}
-
-	int num_matching_actions = gens_end - pandemic_gens.begin();
-
-	//sort generations so we can count them
-	thrust::sort(pandemic_gens.begin(), gens_end);
-
-	thrust::counting_iterator<int> count_iterator(0);
-
-	d_vec lower_bound(MAX_DAYS + 1);
-	thrust::lower_bound(
-		pandemic_gens.begin(),
-		gens_end,
-		count_iterator,
-		count_iterator + MAX_DAYS,
-		lower_bound.begin());
-	lower_bound[MAX_DAYS] = num_matching_actions;
-
-	//increment the generation counts in the appropriate array
-	if(action == ACTION_INFECT_PANDEMIC)
-	{
-		thrust::transform(
-			reproduction_count_pandemic.begin(),
-			reproduction_count_pandemic.begin() + MAX_DAYS,
-			thrust::make_transform_iterator(
-				thrust::make_zip_iterator(thrust::make_tuple(lower_bound.begin(), lower_bound.begin() + 1)),
-				OffsetToCountFunctor_struct()),
-			reproduction_count_pandemic.begin(),
-			thrust::plus<int>());
-	}
-	else  //seasonal
-	{
-		thrust::transform(
-			reproduction_count_seasonal.begin(),
-			reproduction_count_seasonal.begin() + MAX_DAYS,
-			thrust::make_transform_iterator(
-				thrust::make_zip_iterator(thrust::make_tuple(lower_bound.begin(), lower_bound.begin() + 1)),
-				OffsetToCountFunctor_struct()),
-			reproduction_count_seasonal.begin(),
-			thrust::plus<int>());
-	}
-
-	if(debug_log_function_calls)
-		debug_print("reproduction updated");
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, daily_actions);
-}
-
-//this will dump all actions (unfiltered) to disk, which allows immediate debugging of the contacts_to_actions kernel
-//If you need further detail, there are four float outputs which you can enable to debug kernels more easily
-//for example, you can dump the y_vals that decide whether a contact is successful
-//This uses a lot of disk space, so outputs are compressed with zlib.
-//Dump the logs to disk using the 'zcat' utility
-void PandemicSim::dump_actions(
-		)
-{
-	//copy data to host - only as much data as we have contacts
-	h_vec h_ac_type(daily_contacts);	//type of contact
-	thrust::copy_n(daily_action_type.begin(), daily_contacts, h_ac_type.begin());
-
-	h_vec h_ac_inf(daily_contacts);		//infector
-	thrust::copy_n(daily_contact_infectors.begin(), daily_contacts, h_ac_inf.begin());
-
-	h_vec h_ac_vic(daily_contacts);		//victim
-	thrust::copy_n(daily_action_victim_index.begin(), daily_contacts, h_ac_vic.begin());
-
-	h_vec h_vic_gen_p(daily_contacts);	//victim gen_p
-	thrust::copy_n(daily_action_victim_gen_p.begin(), daily_contacts, h_vic_gen_p.begin());
-
-	h_vec h_vic_gen_s = daily_action_victim_gen_s;	//victim gen_s
-	thrust::copy_n(daily_action_victim_gen_s.begin(), daily_contacts, h_vic_gen_s.begin());
-	
-	//copy whole status arrays
-	h_vec h_status_p = people_status_pandemic;
-	h_vec h_status_s = people_status_seasonal;
-	
-//	thrust::host_vector<float> h_r1 = rand1;
-//	thrust::host_vector<float> h_r2 = rand2;
-//	thrust::host_vector<float> h_r3 = rand3;
-//	thrust::host_vector<float> h_r4 = rand4;
-	
-	for(int i = 0; i < daily_actions; i++)
-	{
-		int inf = h_ac_inf[i];
-		int vic = h_ac_vic[i];
-		int type = h_ac_type[i];
-		
-		int status_p = h_status_p[inf];
-		int status_s = h_status_s[inf];
-
-		int gen_p = h_vic_gen_p[i];
-		int gen_s = h_vic_gen_s[i];
-		
-		/*
-		float thresh_p = h_r1[i];
-		float y_p = h_r3[i];
-		bool infects_p = y_p < thresh_p;
-		
-		float thresh_s = h_r2[i];
-		float y_s = h_r4[i];
-		bool infects_s = y_s < thresh_s;*/
-		
-		//current_day, i, type, infector, infector_status_p, infector_status_s, victim, y_p, thresh_p, infects_p, y_s, thresh_s, infects_s
-		if(log_actions)
-			fprintf(fActions, "%d, %d, %s, %d, %c, %c, %d, %d, %d\n", // %f, %f, %d, %f, %f, %d\n",
-					current_day, i, action_type_to_char(type),
-					inf, status_int_to_char(status_p), status_int_to_char(status_s),
-					vic, gen_p, gen_s);
-//					y_p, thresh_p, infects_p, y_s, thresh_s, infects_s);
-		
-		if(print_actions)
-			printf("%2d\tinf: %6d\tstatus_p: %c\tstatus_s: %c\tvic: %6d\ttype: %s\n",
-				i,  inf, status_int_to_char(status_p), status_int_to_char(status_s), vic, action_type_to_char(type));
-	}
-	
-	fflush(fActions);
-	fflush(fDebug);
-}
-
-
-//this will dump the actions to disk after they have been filtered for dupes, invalid infections, etc
-//in combination with dump_actions(), this allows you to debug the filtering code
-//This uses a lot of disk space, so outputs are compressed with zlib.
-//Dump the logs to disk using the 'zcat' utility
-void PandemicSim::dump_actions_filtered()
-{
-	//copy data to host
-	h_vec h_ac_type(daily_actions);
-	thrust::copy_n(daily_action_type.begin(), daily_actions, h_ac_type.begin());
-	h_vec h_ac_vic(daily_actions);
-	thrust::copy_n(daily_action_victim_index.begin(), daily_actions, h_ac_vic.begin());
-	h_vec h_vic_gen_p(daily_actions);
-	thrust::copy_n(daily_action_victim_gen_p.begin(), daily_actions, h_vic_gen_p.begin());
-	h_vec h_vic_gen_s(daily_actions);
-	thrust::copy_n(daily_action_victim_gen_s.begin(), daily_actions, h_vic_gen_s.begin());
-
-	h_vec h_status_p = people_status_pandemic;
-	h_vec h_status_s = people_status_seasonal;
-
-	for(int i = 0; i < daily_actions; i++)
-	{
-		int vic = h_ac_vic[i];
-		int type = h_ac_type[i];
-		int gen_p = h_vic_gen_p[i];
-		int gen_s = h_vic_gen_s[i];
-
-
-		int v_status_p = h_status_p[vic];
-		int v_status_s = h_status_s[vic];
-
-		//current_day, i, type, infector, infector_status_p, infector_status_s, victim, victim_status_p, victim_status_s, gen_p, gen_s
-		if(log_actions_filtered)
-			fprintf(fActionsFiltered, "%d, %d, %s, %d, %c, %d, %c, %d\n",
-			current_day, i, action_type_to_char(type),
-			vic, 
-			status_int_to_char(v_status_p), gen_p, 
-			status_int_to_char(v_status_s), gen_s);
-
-		if(print_actions_filtered)
-			printf("%2d\tvic: %6d\tstatus_p: %c\tstatus_s: %c\ttype: %s\n",
-			i,  vic, status_int_to_char(v_status_p), status_int_to_char(v_status_s), action_type_to_char(type));
-	}
-
-	fflush(fActionsFiltered);
-	fflush(fDebug);
-}
-
-
-//this function controls the update process - it recovers infected people 
-//and rebuilds the array for the next day
-void PandemicSim::daily_rebuildInfectedArray()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "rebuild_infected_arr");
-
-	if(debug_log_function_calls)
-		debug_print("rebuilding infected array");
-
-	//recover infected who have reached culmination
-	int remaining = daily_recoverInfected();
-
-	//get set of non-infected IDs to add to the index
-	//this is to avoid creating duplicate people each with one of the infections
-
-	//get unique action victim IDS to ensure set operation is unique
-	d_vec unique_ids(daily_actions);
-	IntIterator unique_ids_end = thrust::unique_copy(
-		daily_action_victim_index.begin(),
-		daily_action_victim_index.begin() + daily_actions,
-		unique_ids.begin());
-
-	int num_unique_ids = unique_ids_end - unique_ids.begin();
-	d_vec unique_new_ids(num_unique_ids);
-
-	//find action victims where the victim is not already in the infected array
-	IntIterator unique_new_ids_end = thrust::set_difference(
-		unique_ids.begin(),
-		unique_ids_end,
-		infected_indexes.begin(),
-		infected_indexes.begin() + remaining,
-		unique_new_ids.begin());
-
-	int new_infected = unique_new_ids_end - unique_new_ids.begin();
-	int new_infected_total = remaining + new_infected;
-
-	if(CONSOLE_OUTPUT)
-	{
-		printf("%d still infected, %d new, %d total\n", remaining, new_infected, new_infected_total);
-	}
-
-
-	//copy in new indexes and set default values - will be overwritten
-	thrust::copy(unique_new_ids.begin(), unique_new_ids_end, infected_indexes.begin() + remaining);
-	thrust::fill(infected_days_pandemic.begin() + remaining, infected_days_pandemic.begin() + new_infected_total, DAY_NOT_INFECTED);
-	thrust::fill(infected_days_seasonal.begin() + remaining, infected_days_seasonal.begin() + new_infected_total, DAY_NOT_INFECTED);
-	thrust::fill(infected_generation_pandemic.begin() + remaining, infected_generation_pandemic.begin() + new_infected_total, GENERATION_NOT_INFECTED);
-	thrust::fill(infected_generation_seasonal.begin() + remaining, infected_generation_seasonal.begin() + new_infected_total, GENERATION_NOT_INFECTED);
-
-	//sort the new infected into the array
-	thrust::sort(
-		thrust::make_zip_iterator(thrust::make_tuple(
-		infected_indexes.begin(), 
-		infected_days_pandemic.begin(), infected_days_seasonal.begin(), 
-		infected_generation_pandemic.begin(), infected_generation_seasonal.begin())),
-		thrust::make_zip_iterator(thrust::make_tuple(
-		infected_indexes.begin() + new_infected_total,
-		infected_days_pandemic.begin() + new_infected_total, infected_days_seasonal.begin() + new_infected_total,
-		infected_generation_pandemic.begin() + new_infected_total, infected_generation_seasonal.begin() + new_infected_total)),
-		FiveTuple_SortByFirst_Struct());
-
-	//store new infected count
-	infected_count = new_infected_total;
-
-	//perform infection actions
-	do_infection_actions(ACTION_INFECT_PANDEMIC);
-	do_infection_actions(ACTION_INFECT_SEASONAL);
-
-	if(debug_log_function_calls)
-		debug_print("infected array rebuilt");
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-}
-
-
-//This takes the filtered actions stored in the actions array, and executes them on the infected
-//It assumes that all actions are valid
-//Furthermore, it assumes that new infected have been copied into the array with null data
-void PandemicSim::do_infection_actions(int action)
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "do_infection_actions");
-
-	if(debug_log_function_calls)
-		debug_print("processing infection actions");
-
-	//binary search the victims we are applying the actions to
-	vec_t victim_offsets(daily_actions);
-	thrust::lower_bound(
-		infected_indexes.begin(),
-		infected_indexes.begin() + infected_count,
-		daily_action_victim_index.begin(),
-		daily_action_victim_index.begin() + daily_actions,
-		victim_offsets.begin());
-
-	//first, do the pandemic infections
-
-	infectionTypePred typePred;
-	typePred.reference_val = ACTION_INFECT_PANDEMIC;
-
-	//convert victims status to infected
-	thrust::replace_if(
-		thrust::make_permutation_iterator(people_status_pandemic.begin(), daily_action_victim_index.begin()),
-		thrust::make_permutation_iterator(people_status_pandemic.begin(), daily_action_victim_index.begin() + daily_actions),
-		daily_action_type.begin(),
-		typePred,
-		STATUS_INFECTED);
-
-	//copy their generation to the array
-	thrust::scatter_if(
-		daily_action_victim_gen_p.begin(),		//data
-		daily_action_victim_gen_p.begin() + daily_actions,
-		victim_offsets.begin(),			//map
-		daily_action_type.begin(),		//stencil
-		infected_generation_pandemic.begin(),		//output
-		typePred);
-
-	//mark tomorrow as their first day
-	thrust::replace_if(
-		thrust::make_permutation_iterator(infected_days_pandemic.begin(), victim_offsets.begin()),
-		thrust::make_permutation_iterator(infected_days_pandemic.begin(), victim_offsets.end()),
-		daily_action_type.begin(),
-		typePred,
-		current_day + 1);
-
-
-	//do it again for seasonal
-	typePred.reference_val = ACTION_INFECT_SEASONAL;
-	thrust::replace_if(
-		thrust::make_permutation_iterator(people_status_seasonal.begin(), daily_action_victim_index.begin()),
-		thrust::make_permutation_iterator(people_status_seasonal.begin(), daily_action_victim_index.begin() + daily_actions),
-		daily_action_type.begin(),
-		typePred,
-		STATUS_INFECTED);
-	thrust::scatter_if(
-		daily_action_victim_gen_s.begin(),
-		daily_action_victim_gen_s.begin() + daily_actions,
-		victim_offsets.begin(),
-		daily_action_type.begin(),
-		infected_generation_seasonal.begin(),
-		typePred);
-	thrust::replace_if(
-		thrust::make_permutation_iterator(infected_days_seasonal.begin(), victim_offsets.begin()),
-		thrust::make_permutation_iterator(infected_days_seasonal.begin(), victim_offsets.end()),
-		daily_action_type.begin(),
-		typePred,
-		current_day + 1);
-
-	if(debug_log_function_calls)
-		debug_print("infection actions processed");
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, daily_actions);
-}
-
-
-//tihs function will recover infected people who have reached the culmination period
-//should be called from rebuild_infected_arr()
-int PandemicSim::daily_recoverInfected()
-{
-	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "recover_infected");
-
-	if(debug_log_function_calls)
-		debug_print("beginning recover_infected");
-
-	recoverInfectedOp recoverOp;
-	recoverOp.current_day = current_day;		//store current day in functor
-
-	//recover pandemic strains
-	thrust::transform(
-		infected_days_pandemic.begin(),
-		infected_days_pandemic.begin() + infected_count,
-		thrust::make_zip_iterator(thrust::make_tuple(
-			thrust::make_permutation_iterator(people_status_pandemic.begin(), infected_indexes.begin()),
-			infected_days_pandemic.begin(), infected_generation_pandemic.begin())),			
-		thrust::make_zip_iterator(thrust::make_tuple(
-			thrust::make_permutation_iterator(people_status_pandemic.begin(), infected_indexes.begin()),
-			infected_days_pandemic.begin(), infected_generation_pandemic.begin())),
-		recoverOp);
-
-	//recover seasonal strains
-	thrust::transform(
-		infected_days_seasonal.begin(),
-		infected_days_seasonal.begin() + infected_count,
-		thrust::make_zip_iterator(thrust::make_tuple(
-			thrust::make_permutation_iterator(people_status_seasonal.begin(), infected_indexes.begin()),
-			infected_days_seasonal.begin(), infected_generation_seasonal.begin())),			
-		thrust::make_zip_iterator(thrust::make_tuple(
-			thrust::make_permutation_iterator(people_status_seasonal.begin(), infected_indexes.begin()),
-			infected_days_seasonal.begin(), infected_generation_seasonal.begin())),
-		recoverOp);
-
-	//remove people who are no longer infected
-	d_vec infected_indexes_copy(infected_count);		//NOTE: not sure if this is necessary
-	thrust::copy(infected_indexes.begin(), infected_indexes.begin() + infected_count, infected_indexes_copy.begin());	//TODO: check
-
-	ZipIntFiveTupleIterator infected_begin = thrust::make_zip_iterator(thrust::make_tuple(
-			infected_indexes.begin(), 
-			infected_days_pandemic.begin(),	infected_days_seasonal.begin(), 
-			infected_generation_pandemic.begin(), infected_generation_seasonal.begin()));
-	ZipIntFiveTupleIterator infected_end = thrust::remove_if(
-		infected_begin,
-		thrust::make_zip_iterator(thrust::make_tuple(
-			infected_indexes.begin() + infected_count, 
-			infected_days_pandemic.begin() + infected_count, infected_days_seasonal.begin() + infected_count,
-			infected_generation_pandemic.begin() + infected_count, infected_generation_seasonal.begin() + infected_count)),
-		thrust::make_zip_iterator(thrust::make_tuple(
-			thrust::make_permutation_iterator(people_status_pandemic.begin(), infected_indexes_copy.begin()),
-			thrust::make_permutation_iterator(people_status_seasonal.begin(), infected_indexes_copy.begin()))),
-		notInfectedPredicate());
-
-	int infected_remaining = infected_end - infected_begin;
-
-	if(debug_log_function_calls)
-		debug_print("infected recovery complete");
-
-	if(PROFILE_SIMULATION)
-		profiler.endFunction(current_day, infected_count);
-
-	return infected_remaining;
-}
-
-//tests the household/workplace locations for the first 10 infected people
-void PandemicSim::test_locs()
-{
-	h_vec h_o = household_offsets;
-	h_vec h_p = household_people;
-
-	h_vec w_o = workplace_offsets;
-	h_vec w_p = workplace_people;
-
-	h_vec i_i = infected_indexes;
-	h_vec p_hh = people_households;
-	h_vec p_wp = people_workplaces; 
-
-	for(int i = 0; i < 10; i++)
-	{
-		int idx = i_i[i];
-		int hh = p_hh[idx];		//lookup household for 
-		int wp = p_wp[idx];
-		int wp_contains = 0;
-		int hh_contains = 0;
-
-/*		for(int j = 0; j < w_c[wp]; j++)
-		{
-			int offset = w_o[wp] + j;
-			if(w_p[offset] == idx)
-			{
-				wp_contains = 1;
-				break;
-			}
-		}
-
-		for(int j = 0; j < h_c[hh]; j++)
-		{
-			int offset = h_o[hh] + j;
-			if(h_p[offset] == idx)
-			{
-				hh_contains = 1;
-				break;
-			}
-		}*/
-		printf("%4d:\tID: %d\tHH: %4d\tWP: %4d\tHH_contains: %4d\tWP_contains: %4d\n",i,idx,hh,wp, hh_contains, wp_contains);
-	}
-}
-
-
 
 //will resize the infected, contact, and action arrays to fit the entire population
 void PandemicSim::setup_sizeGlobalArrays()
 {
-	//assume that at peak, about 3/4 of people will be affected
-//	float peak_infection_ratio = 0.75f;
-//	int expected_max_infection = (int) peak_infection_ratio * number_people;
-
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(-1,"setup_sizeGlobalArrays");
 	//setup people status:
 	people_status_pandemic.resize(number_people);
 	people_status_seasonal.resize(number_people);
@@ -2131,13 +1074,16 @@ void PandemicSim::setup_sizeGlobalArrays()
 	thrust::fill(people_gens_pandemic.begin(), people_gens_pandemic.end(), GENERATION_NOT_INFECTED);
 	thrust::fill(people_gens_seasonal.begin(), people_gens_seasonal.end(), GENERATION_NOT_INFECTED);
 
+	household_offsets.resize(number_households + 1);
+	household_people.resize(number_people);
+
+	workplace_offsets.resize(number_workplaces + 1);
+	workplace_people.resize(number_people);
+	workplace_max_contacts.resize(number_workplaces);
+
 	//assume that worst-case everyone gets infected
 	infected_indexes.resize(number_people);
 	infected_daily_kval_sum.resize(number_people);
-//	infected_days_pandemic.resize(number_people);
-//	infected_days_seasonal.resize(number_people);
-//	infected_generation_pandemic.resize(number_people);
-//	infected_generation_seasonal.resize(number_people);
 
 	int expected_max_contacts = number_people * MAX_CONTACTS_PER_DAY;
 
@@ -2145,12 +1091,7 @@ void PandemicSim::setup_sizeGlobalArrays()
 	daily_contact_infectors.resize(expected_max_contacts);
 	daily_contact_victims.resize(expected_max_contacts);
 	daily_contact_kvals.resize(expected_max_contacts);
-
-	//resize action arrays
 	daily_action_type.resize(expected_max_contacts);
-//	daily_action_victim_index.resize(expected_max_contacts);
-//	daily_action_victim_gen_p.resize(expected_max_contacts);
-//	daily_action_victim_gen_s.resize(expected_max_contacts);
 
 	//weekend errands arrays tend to be very large, so pre-allocate them
 	int num_weekend_errands = number_people * NUM_WEEKEND_ERRANDS;
@@ -2173,46 +1114,47 @@ void PandemicSim::setup_sizeGlobalArrays()
 		debug_float3.resize(expected_max_contacts);
 		debug_float4.resize(expected_max_contacts);
 	}
-}
 
-
-void PandemicSim::debug_dump_array(const char * description, d_vec * gens_array, int array_count)
-{
-	h_vec host_array(array_count);
-	thrust::copy_n(gens_array->begin(), array_count, host_array.begin());
-
-	for(int i = 0; i < array_count; i++)
+	if(PROFILE_SIMULATION)
 	{
-		printf("%3d\t%s: %d\n",i,description, host_array[i]);
+		profiler.endFunction(-1,number_people);
 	}
 }
 
+
+
 void PandemicSim::debug_nullFillDailyArrays()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day,"debug_nullFillDailyArrays");
+
 	thrust::fill(daily_contact_infectors.begin(), daily_contact_infectors.end(), -1);
 	thrust::fill(daily_contact_victims.begin(), daily_contact_victims.end(), -1);
 	thrust::fill(daily_contact_kvals.begin(), daily_contact_kvals.end(), CONTACT_TYPE_NONE);
 	thrust::fill(infected_daily_kval_sum.begin(), infected_daily_kval_sum.end(), 0);
 
 	thrust::fill(daily_action_type.begin(), daily_action_type.end(), ACTION_INFECT_NONE);
-	thrust::fill(daily_action_victim_index.begin() ,daily_action_victim_index.end(), -1);
-	thrust::fill(daily_action_victim_gen_p.begin(), daily_action_victim_gen_p.end(), GENERATION_NOT_INFECTED);
-	thrust::fill(daily_action_victim_gen_s.begin(), daily_action_victim_gen_s.end(), GENERATION_NOT_INFECTED);
 
 	thrust::fill(errand_infected_locations.begin(), errand_infected_locations.end(), -1);
 	thrust::fill(errand_infected_weekendHours.begin(), errand_infected_weekendHours.end(), -1);
 	thrust::fill(errand_infected_ContactsDesired.begin(), errand_infected_ContactsDesired.end(), -1);
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day, number_people);
 }
 
 void PandemicSim::setup_scaleSimulation()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(-1,"setup_scaleSimulation");
+
 	number_households = roundHalfUp_toInt(sim_scaling_factor * (double) number_households);
 
 	int sum = 0;
 	for(int business_type = 0; business_type < NUM_BUSINESS_TYPES; business_type++)
 	{
 		//for each type of business, scale by overall simulation scalar
-		int original_type_count = roundHalfUp_toInt(h_workplace_type_counts[business_type]);
+		int original_type_count = roundHalfUp_toInt(WORKPLACE_TYPE_COUNT_HOST[business_type]);
 		int new_type_count = roundHalfUp_toInt(sim_scaling_factor * original_type_count);
 
 		//if at least one business of this type existed in the original data, make sure at least one exists in the new data
@@ -2226,13 +1168,19 @@ void PandemicSim::setup_scaleSimulation()
 
 	//calculate the offset of each workplace type
 	thrust::exclusive_scan(
-		h_workplace_type_counts,
-		h_workplace_type_counts + NUM_BUSINESS_TYPES,
-		h_workplace_type_offset);			
+		WORKPLACE_TYPE_COUNT_HOST,
+		WORKPLACE_TYPE_COUNT_HOST + NUM_BUSINESS_TYPES,
+		WORKPLACE_TYPE_OFFSET_HOST);
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(-1,NUM_BUSINESS_TYPES);
 }
 
-void debug_dump_array_toTempFile(const char * filename, const char * description, d_vec * target_array, int array_count)
+void PandemicSim::debug_dump_array_toTempFile(const char * filename, const char * description, d_vec * target_array, int array_count)
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "debug_dumpArray_toTempFile");
+
 	h_vec host_array(array_count);
 	thrust::copy_n(target_array->begin(), array_count, host_array.begin());
 
@@ -2243,6 +1191,9 @@ void debug_dump_array_toTempFile(const char * filename, const char * description
 		fprintf(fTemp,"%d,%d\n",i,host_array[i]);
 	}
 	fclose(fTemp);
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day,array_count);
 }
 
 
@@ -2381,7 +1332,7 @@ void PandemicSim::weekday_scatterErrandDestinations_wholeDay(d_vec * people_locs
 void PandemicSim::doWeekend_wholeDay()
 {
 	if(PROFILE_SIMULATION)
-		profiler.beginFunction(current_day, "doWeekendErrands_wholeDay");
+		profiler.beginFunction(current_day, "doWeekend_wholeDay");
 
 	//assign all weekend errands
 	weekend_assignErrands(&errand_people_table, &errand_people_weekendHours, &errand_people_destinations);
@@ -2474,13 +1425,15 @@ void PandemicSim::doWeekend_wholeDay()
 	if(log_contacts)
 		validateContacts_wholeDay();
 
-	exit(0);
 	if(PROFILE_SIMULATION)
 		profiler.endFunction(current_day,infected_count);
 }
 
 void PandemicSim::weekday_doInfectedSetup_wholeDay(vec_t * lookup_array, vec_t * inf_locs, vec_t * inf_contacts_desired)
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "weekday_doInfectedSetup_wholeDay");
+
 	int * inf_indexes_ptr = thrust::raw_pointer_cast(infected_indexes.data());
 	int * loc_lookup_ptr = thrust::raw_pointer_cast(lookup_array->data());
 	int * inf_locs_ptr = thrust::raw_pointer_cast(inf_locs->data());
@@ -2495,10 +1448,16 @@ void PandemicSim::weekday_doInfectedSetup_wholeDay(vec_t * lookup_array, vec_t *
 
 	const int rand_counts_used = infected_count / 4;
 	rand_offset += rand_counts_used;
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day,infected_count);
 }
 
 void PandemicSim::weekend_doInfectedSetup_wholeDay(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_hours, vec_t * infected_destinations, vec_t * infected_contacts_desired)
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "weekend_doInfectedSetup");
+
 	//first input: a list of all infected
 	int * global_infected_indexes_ptr = thrust::raw_pointer_cast(infected_indexes.data());
 
@@ -2518,10 +1477,16 @@ void PandemicSim::weekend_doInfectedSetup_wholeDay(vec_t * errand_hours, vec_t *
 
 	int rand_counts_consumed = infected_count / 4;
 	rand_offset += rand_counts_consumed;
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day,infected_count);
 }
 
 void PandemicSim::weekend_assignErrands(vec_t * errand_people, vec_t * errand_hours, vec_t * errand_destinations)
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "weekend_assignErrands");
+
 	int * errand_people_ptr = thrust::raw_pointer_cast(errand_people->data());
 	int * errand_hours_ptr = thrust::raw_pointer_cast(errand_hours->data());
 	int * errand_dests_ptr=  thrust::raw_pointer_cast(errand_destinations->data());
@@ -2530,25 +1495,9 @@ void PandemicSim::weekend_assignErrands(vec_t * errand_people, vec_t * errand_ho
 
 	int rand_counts_consumed = 2 * number_people;
 	rand_offset += rand_counts_consumed;
-}
 
-inline int lookup_school_typecode_from_age_code(int age_code)
-{
-	switch(age_code)
-	{
-	case AGE_5:
-		return BUSINESS_TYPE_PRESCHOOL;
-	case AGE_9:
-		return BUSINESS_TYPE_ELEMENTARYSCHOOL;
-	case AGE_14:
-		return BUSINESS_TYPE_MIDDLESCHOOL;
-	case AGE_17:
-		return BUSINESS_TYPE_HIGHSCHOOL;
-	case AGE_22:
-		return BUSINESS_TYPE_UNIVERSITY;
-	default:
-		throw std::runtime_error("invalid school typecode");
-	}
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day,number_people);
 }
 
 __device__ void device_assignContactsDesired_weekday_wholeDay(unsigned int rand_val, int myAge, int * output_contacts_desired)
@@ -2559,12 +1508,12 @@ __device__ void device_assignContactsDesired_weekday_wholeDay(unsigned int rand_
 		//get a profile between 0 and 2
 		int contacts_profile = rand_val % 3;
 
-		contacts_hour[0] = weekday_errand_contact_assignments_wholeDay[contacts_profile][0];
-		contacts_hour[1] = weekday_errand_contact_assignments_wholeDay[contacts_profile][1];
+		contacts_hour[0] = WEEKDAY_ERRAND_CONTACT_ASSIGNMENTS_DEVICE[contacts_profile][0];
+		contacts_hour[1] = WEEKDAY_ERRAND_CONTACT_ASSIGNMENTS_DEVICE[contacts_profile][1];
 	}
 	else
 	{
-		contacts_hour[0] = business_type_max_contacts[BUSINESS_TYPE_AFTERSCHOOL];
+		contacts_hour[0] = WORKPLACE_TYPE_MAX_CONTACTS_DEVICE[BUSINESS_TYPE_AFTERSCHOOL];
 		contacts_hour[1] = 0;
 	}
 
@@ -2631,7 +1580,7 @@ __device__ void device_assignContactsDesired_weekday_wholeDay(unsigned int * ran
 	else
 	{
 		//look up max contacts for afterschool type
-		hour1 = business_type_max_contacts[BUSINESS_TYPE_AFTERSCHOOL];
+		hour1 = WORKPLACE_TYPE_MAX_CONTACTS_DEVICE[BUSINESS_TYPE_AFTERSCHOOL];
 		hour2 = 0;
 	}
 	*contactsDesiredHour1 = hour1;
@@ -2700,6 +1649,7 @@ __global__ void kernel_doInfectedSetup_weekday_wholeDay(int * infected_index_arr
 	}
 }
 
+#pragma region debug_printing_funcs
 
 inline void debug_print(char * message)
 {
@@ -2734,6 +1684,9 @@ inline void debug_assert(bool condition, char * message, int idx)
 		fprintf(fDebug, "ERROR: %s index: %d\n", message, idx);
 	}
 }
+#pragma endregion debug_printing_funcs
+
+#pragma region debug_lookup_funcs
 
 inline char status_int_to_char(int s)
 {
@@ -2750,7 +1703,7 @@ inline char status_int_to_char(int s)
 	}
 }
 
-inline char * action_type_to_char(int action)
+inline char * action_type_to_string(int action)
 {
 	switch(action)
 	{
@@ -2767,13 +1720,46 @@ inline char * action_type_to_char(int action)
 	}
 }
 
-struct weekend_getter : public thrust::unary_function<int, float>
+inline int lookup_school_typecode_from_age_code(int age_code)
 {
-	__device__ float operator() (const int& i)
+	switch(age_code)
 	{
-		return weekend_errand_pdf[i];
+	case AGE_5:
+		return BUSINESS_TYPE_PRESCHOOL;
+	case AGE_9:
+		return BUSINESS_TYPE_ELEMENTARYSCHOOL;
+	case AGE_14:
+		return BUSINESS_TYPE_MIDDLESCHOOL;
+	case AGE_17:
+		return BUSINESS_TYPE_HIGHSCHOOL;
+	case AGE_22:
+		return BUSINESS_TYPE_UNIVERSITY;
+	default:
+		throw std::runtime_error("invalid school typecode");
 	}
-};
+}
+
+char * profile_int_to_string(int p)
+{
+	switch(p)
+	{
+	case PROFILE_GAMMA1:
+		return "GAMMA1";
+	case PROFILE_GAMMA2:
+		return "GAMMA2";
+	case PROFILE_LOGNORM1:
+		return "LOGNORM1";
+	case PROFILE_LOGNORM2:
+		return "LOGNORM2";
+	case PROFILE_WEIB1:
+		return "WEIB1";
+	case PROFILE_WEIB2:
+		return "WEIB2";
+	default:
+		return "ERR_BAD_PROFILE_NUM";
+	}
+}
+#pragma endregion debug_lookup_funcs
 
 //generates N unique numbers between 0 and max, exclusive
 //assumes array is big enough that this won't be pathological
@@ -3024,7 +2010,7 @@ __global__ void makeContactsKernel_weekend(int num_infected, int * infected_inde
 
 		{
 			int loc_offset, loc_count;
-			int errand_slot = weekend_errand_contact_assignments_wholeDay[contacts_profile][0]; //the errand number the contact will be made in
+			int errand_slot = WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_DEVICE[contacts_profile][0]; //the errand number the contact will be made in
 
 			device_lookupLocationData_weekendErrand(		//lookup the location data for this errand: we just need the offset and count
 				myPos, errand_slot, 
@@ -3043,7 +2029,7 @@ __global__ void makeContactsKernel_weekend(int num_infected, int * infected_inde
 		{
 			//do it again for the second errand contact
 			int loc_offset, loc_count;
-			int errand_slot = weekend_errand_contact_assignments_wholeDay[contacts_profile][1];		
+			int errand_slot = WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_DEVICE[contacts_profile][1];		
 			device_lookupLocationData_weekendErrand(			//lookup the location data for this errand
 				myPos, errand_slot, 
 				infected_errand_hours, infected_errand_destinations, 
@@ -3213,7 +2199,7 @@ __device__ void device_selectRandomPersonFromLocation(int infector_idx, int loc_
 
 	//increment the kval sum by the kval of this contact type
 	if(contact_type != CONTACT_TYPE_NONE)
-		*output_kval_sum += kval_lookup[contact_type];
+		*output_kval_sum += KVAL_LOOKUP_DEVICE[contact_type];
 }
 
 //write a null contact to the memory locations
@@ -3244,8 +2230,8 @@ __global__ void kernel_assignAfterschoolLocations_wholeDay(int * child_indexes_a
 	} u;
 
 	//get the number of afterschool locations and their offset in the business array
-	int afterschool_count = business_type_count[BUSINESS_TYPE_AFTERSCHOOL];
-	int afterschool_offset = business_type_count_offset[BUSINESS_TYPE_AFTERSCHOOL];
+	int afterschool_count = WORKPLACE_TYPE_COUNT_DEVICE[BUSINESS_TYPE_AFTERSCHOOL];
+	int afterschool_offset = WORKPLACE_TYPE_OFFSET_DEVICE[BUSINESS_TYPE_AFTERSCHOOL];
 
 	//for each child
 	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <= number_children / 4; myGridPos += gridDim.x * blockDim.x)
@@ -3335,22 +2321,22 @@ __device__ void device_fishWeekdayErrand(unsigned int * rand_val, int * output_d
 
 	int row = FIRST_WEEKDAY_ERRAND_ROW; //which business type
 
-	while(yval > weekday_errand_pdf[row] && row < (NUM_BUSINESS_TYPES - 1))
+	while(yval > WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_DEVICE[row] && row < (NUM_BUSINESS_TYPES - 1))
 	{
-		yval -= weekday_errand_pdf[row];
+		yval -= WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_DEVICE[row];
 		row++;
 	}
 
 	//figure out which business of this type we're at
-	float frac = yval / weekday_errand_pdf[row];
-	int type_count = business_type_count[row];
+	float frac = yval / WORKPLACE_TYPE_WEEKDAY_ERRAND_PDF_DEVICE[row];
+	int type_count = WORKPLACE_TYPE_COUNT_DEVICE[row];
 	int business_num = frac * type_count;
 
 	if(business_num >= type_count)
 		business_num = type_count - 1;
 
 	//add the offset to the first business of this type 
-	int type_offset = business_type_count_offset[row];
+	int type_offset = WORKPLACE_TYPE_OFFSET_DEVICE[row];
 
 	*output_destination = business_num + type_offset;
 }
@@ -3635,32 +2621,6 @@ __global__ void kernel_countInfectedStatus(int * pandemic_status_array, int * se
 	}
 }
 
-void PandemicSim::daily_countInfectedStats()
-{
-	//stores pandemic, then seasonal, then the day
-	d_vec status_counts(8 + 8);
-
-	//get pointers
-	int * pandemic_counts_ptr = thrust::raw_pointer_cast(status_counts.data());
-	int * seasonal_counts_ptr = pandemic_counts_ptr + 8;
-
-	/////NOTE:  this builds, but the code is completely untested, it should probably be tested in a synchronous fashion before using async
-	/*//memset to 0
-	cudaMemsetAsync(pandemic_counts_ptr, 0, sizeof(int) * 16,stream_countInfectedStatus);
-
-	int * status_pandemic_arr_ptr = thrust::raw_pointer_cast(people_status_pandemic.data());
-	int * status_seasonal_arr_ptr = thrust::raw_pointer_cast(people_status_seasonal.data());
-
-	size_t smemsize = 0;
-	kernel_countInfectedStatus<<<COUNTING_GRID_BLOCKS, COUNTING_GRID_THREADS,smemsize, stream_countInfectedStatus>>>(
-		status_pandemic_arr_ptr, status_seasonal_arr_ptr, 
-		number_people, 
-		pandemic_counts_ptr, seasonal_counts_ptr);
-	
-	cudaMemcpyAsync(&status_counts_today, pandemic_counts_ptr,sizeof(int) * 16,cudaMemcpyDeviceToHost,stream_countInfectedStatus);
-	cudaEventRecord(event_statusCountsReadyToDump,stream_countInfectedStatus);*/
-}
-
 struct isInfectedPred
 {
 	__device__ bool operator() (thrust::tuple<int,int> status_tuple)
@@ -3674,6 +2634,9 @@ struct isInfectedPred
 
 void PandemicSim::daily_buildInfectedArray_global()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "daily_buildInfectedArray_global");
+
 	thrust::counting_iterator<int> count_it(0);
 	IntIterator infected_indexes_end = thrust::copy_if(
 		count_it, count_it + number_people,
@@ -3683,43 +2646,11 @@ void PandemicSim::daily_buildInfectedArray_global()
 		isInfectedPred());
 
 	infected_count = infected_indexes_end - infected_indexes.begin();
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day, infected_count);
 }
 
-
-struct filterContacts_pred
-{
-	int * status_pandemic_arr;
-	int * status_seasonal_arr;
-	__device__ bool operator() (thrust::tuple<int,int,int> action_tuple)
-	{
-		int action_type = thrust::get<0>(action_tuple);
-
-		if(action_type == ACTION_INFECT_NONE)
-			return true;
-
-		return false;
-	}
-};
-
-void PandemicSim::daily_filterActions_new()
-{
-	int num_possible_contacts = is_weekend() ? MAX_CONTACTS_WEEKEND * number_people : MAX_CONTACTS_WEEKDAY * number_people;
-
-	filterContacts_pred contact_filter_obj;
-	contact_filter_obj.status_pandemic_arr = thrust::raw_pointer_cast(people_status_pandemic.data());
-	contact_filter_obj.status_seasonal_arr = thrust::raw_pointer_cast(people_status_seasonal.data());
-
-	ZipIntTripleIterator actions_end = thrust::remove_if(
-		thrust::make_zip_iterator(thrust::make_tuple(
-			daily_action_type.begin(), 
-			daily_contact_infectors.begin(), 
-			daily_contact_victims.begin())),
-		thrust::make_zip_iterator(thrust::make_tuple(
-			daily_action_type.begin() + num_possible_contacts, 
-			daily_contact_infectors.begin() + num_possible_contacts, 
-			daily_contact_victims.begin() + num_possible_contacts)),
-			contact_filter_obj);
-}
 
 struct recoverInfected_pred
 {
@@ -3742,6 +2673,9 @@ struct recoverInfected_pred
 
 void PandemicSim::daily_recoverInfected_new()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "daily_recoverInfected");
+
 	recoverInfected_pred recover_obj;
 	recover_obj.recover_infections_from_day = (current_day + 1) - CULMINATION_PERIOD;
 
@@ -3762,10 +2696,16 @@ void PandemicSim::daily_recoverInfected_new()
 			thrust::make_permutation_iterator(people_days_seasonal.begin(), infected_indexes.begin()))),
 		recover_obj,
 		STATUS_RECOVERED);
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day, infected_count);
 }
 
 void PandemicSim::final_countReproduction()
 {
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(-1,"final_countReproduction");
+
 	thrust::sort(people_gens_pandemic.begin(), people_gens_pandemic.end());
 	thrust::sort(people_gens_seasonal.begin(), people_gens_seasonal.end());
 
@@ -3806,4 +2746,653 @@ void PandemicSim::final_countReproduction()
 			gen, gen_size_p, rn_p, gen_size_s, rn_s);
 	}
 	fclose(fReproduction);
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(-1,number_people);
+}
+
+__device__ void device_checkActionAndWrite(bool infects_pandemic, bool infects_seasonal, int victim, int * pandemic_status_arr, int * seasonal_status_arr, int * dest_ptr)
+{
+	if(infects_pandemic)
+	{
+		int victim_status_p = pandemic_status_arr[victim];
+		if(victim_status_p != STATUS_SUSCEPTIBLE)
+			infects_pandemic = false;
+	}
+	if(infects_seasonal)
+	{
+		int victim_status_s = seasonal_status_arr[victim];
+		if(victim_status_s != STATUS_SUSCEPTIBLE)
+			infects_seasonal = false;
+	}
+
+	if(infects_pandemic && infects_seasonal)
+		*dest_ptr = ACTION_INFECT_BOTH;
+	else if(infects_pandemic)
+		*dest_ptr = ACTION_INFECT_PANDEMIC;
+	else if(infects_seasonal)
+		*dest_ptr = ACTION_INFECT_SEASONAL;
+}
+
+__device__ float device_calculateInfectionProbability(int profile, int day_of_infection, int strain, kval_t kval_sum)
+{
+	//alpha: fraction of infectiousness that will occur on this day of infection for this profile
+	float alpha = INFECTIOUNESS_PROFILES_DEVICE[profile][day_of_infection];
+
+	//strain_adjustment_factor: equals rn_base / ((1.0-asymp) * pct_symptomatic)
+	float strain_adjustment_factor = INFECTIOUSNESS_FACTOR_DEVICE[strain];
+
+	//the average number of infections this person will generate today
+	float average_infections_today = alpha * strain_adjustment_factor;
+
+	//the average chance for infection for a contact with kappa = 1.0
+	float normalized_infection_prob = (float) average_infections_today / kval_sum;
+}
+
+
+__global__ void kernel_householdTypeAssignment(int * hh_type_array, int num_households, int rand_offset)
+{
+	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} rand_union;
+
+	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <= num_households / 4; myGridPos += gridDim.x * blockDim.x)
+	{
+		int myRandOffset = rand_offset + myGridPos;
+		threefry2x64_ctr_t tf_ctr = {{((long) myRandOffset),((long) myRandOffset)}};
+		rand_union.c = threefry2x64(tf_ctr,tf_k);
+
+		int myPos = myGridPos * 4;
+
+		if(myPos < num_households)
+			hh_type_array[myPos+0] = device_setup_fishHouseholdType(rand_union.i[0]);
+
+		if(myPos + 1 < num_households)
+			hh_type_array[myPos+1] = device_setup_fishHouseholdType(rand_union.i[1]);
+
+		if(myPos + 2 < num_households)
+			hh_type_array[myPos+2] = device_setup_fishHouseholdType(rand_union.i[2]);
+
+		if(myPos + 3 < num_households)
+			hh_type_array[myPos+3] = device_setup_fishHouseholdType(rand_union.i[3]);
+	}
+}
+
+__device__ int device_setup_fishHouseholdType(unsigned int rand_val)
+{
+	float y = (float) rand_val / UNSIGNED_MAX;
+
+	int row = 0;
+	while(y > HOUSEHOLD_TYPE_CDF_DEVICE[row] && row < HH_TABLE_ROWS - 1)
+		row++;
+
+	return row;
+}
+
+
+
+__device__ int device_setup_fishWorkplace(unsigned int rand_val)
+{
+	float y = (float) rand_val / UNSIGNED_MAX;
+
+	int row = 0;
+	while(WORKPLACE_TYPE_ASSIGNMENT_PDF_DEVICE[row] < y && row < NUM_BUSINESS_TYPES - 1)
+	{
+		y -= WORKPLACE_TYPE_ASSIGNMENT_PDF_DEVICE[row];
+		row++;
+	}
+
+	//of this workplace type, which number is this?
+	float frac = y / WORKPLACE_TYPE_ASSIGNMENT_PDF_DEVICE[row];
+	int type_count = WORKPLACE_TYPE_COUNT_DEVICE[row];
+	int business_num = frac * type_count;  //truncate to int
+
+	if(business_num >= type_count)
+		business_num = type_count - 1;
+
+	//how many other workplaces have we gone past?
+	int type_offset = WORKPLACE_TYPE_OFFSET_DEVICE[row];
+
+	return business_num + type_offset;
+}
+
+__device__ void device_setup_fishSchoolAndAge(unsigned int rand_val, int * output_age_ptr, int * output_school_ptr)
+{
+	float y = (float) rand_val / RAND_MAX;
+
+	//fish out age group and resulting school type from CDF
+	int row = 0;
+	while(row < CHILD_DATA_ROWS - 1 && y > CHILD_AGE_CDF_DEVICE[row])
+		row++;
+
+	int wp_type = CHILD_AGE_SCHOOLTYPE_LOOKUP_DEVICE[row];
+
+	//of this school type, which one will this kid be assigned to?
+	float frac;
+	if(row == 0)
+		frac = y / (CHILD_AGE_CDF_DEVICE[row]);
+	else
+	{
+		//we need to back out a PDF from the CDF
+		float pdf_here = CHILD_AGE_CDF_DEVICE[row] - CHILD_AGE_CDF_DEVICE[row - 1];
+		float y_here = y - CHILD_AGE_CDF_DEVICE[row - 1];
+
+		frac =  y_here / pdf_here;
+	}
+
+	int type_count = WORKPLACE_TYPE_COUNT_DEVICE[wp_type];
+	int business_num = frac * type_count;
+
+	if(business_num >= type_count)
+		business_num = type_count - 1;
+
+	//how many other workplaces have we gone past?
+	int type_offset = WORKPLACE_TYPE_OFFSET_DEVICE[wp_type];
+	*output_school_ptr = business_num + type_offset;
+	*output_age_ptr = row;
+}
+
+
+__global__ void kernel_generateHouseholds(
+	int * hh_type_array, int * adult_exscan_arr, 
+	int * child_exscan_arr, int num_households, 
+	int * adult_index_arr, int * child_index_arr, 
+	int * people_age_arr, int * people_households_arr, int * people_workplaces_arr, int rand_offset)
+{
+	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} rand_union;
+
+	const int rand_counts_consumed = 2;
+
+	for(int hh = blockIdx.x * blockDim.x + threadIdx.x;  hh < num_households ; hh += gridDim.x * blockDim.x)
+	{
+		int adults_offset = adult_exscan_arr[hh];
+		int children_offset = child_exscan_arr[hh];
+
+		int hh_type = hh_type_array[hh];
+		int adults_count = HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[hh_type];
+		int children_count = HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[hh_type];
+
+		//get random numbers
+		int myRandOffset = rand_offset + (hh * rand_counts_consumed);
+		threefry2x64_ctr_t tf_ctr_1 = {{((long)myRandOffset), ((long)myRandOffset)}};
+		rand_union.c = threefry2x64(tf_ctr_1, tf_k);
+
+		for(int people_generated = 0; people_generated < adults_count; people_generated++)
+		{
+			int person_id = adults_offset + children_offset + people_generated;
+
+			adult_index_arr[adults_offset + people_generated] = person_id; //store this ID in the adults index array
+			people_age_arr[person_id] = AGE_ADULT;					//mark as an adult
+			people_households_arr[person_id] = hh;				//store the household number
+			people_workplaces_arr[person_id] = device_setup_fishWorkplace(rand_union.i[people_generated]);
+		}
+
+		//get more random numbers
+		threefry2x64_ctr_t tf_ctr_2 = {{((long) myRandOffset + 1), ((long) myRandOffset + 1)}};
+		rand_union.c = threefry2x64(tf_ctr_2, tf_k);
+
+		for(int people_generated = 0; people_generated < children_count; people_generated++)
+		{
+			int person_id = adults_offset + children_offset + adults_count + people_generated;
+
+			child_index_arr[children_offset + people_generated] = person_id;	//store as a child
+			people_households_arr[person_id] = hh;		//store the household number
+			device_setup_fishSchoolAndAge(
+				rand_union.i[people_generated],	
+				people_age_arr + person_id,			//ptr into age_array
+				people_workplaces_arr + person_id);		//ptr into workplace array
+		}
+	}
+}
+
+
+struct hh_adult_count_functor : public thrust::unary_function<int,int>
+{
+	__device__ int operator () (int hh_type) const
+	{
+		return HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[hh_type];
+	}
+};
+
+struct hh_child_count_functor : public thrust::unary_function<int,int>
+{
+	__device__ int operator () (int hh_type) const
+	{
+		return HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[hh_type];
+	}
+};
+
+
+//Sets up people's households and workplaces according to the probability functions
+void PandemicSim::setup_generateHouseholds()
+{
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(-1,"setup_generateHouseholds");
+
+	d_vec hh_types_array(number_households+1);
+	int * hh_types_array_ptr = thrust::raw_pointer_cast(hh_types_array.data());
+
+	//assign household types
+	kernel_householdTypeAssignment<<<cuda_blocks,cuda_threads>>>(hh_types_array_ptr, number_households,rand_offset);
+	int rand_counts_consumed_1 = number_households / 4;
+	rand_offset += rand_counts_consumed_1;
+
+	d_vec adult_count_exclScan(number_households+1);
+	d_vec child_count_exclScan(number_households+1);
+
+	//these count_functors convert household types into the number of children/adults in that type
+	//use a transform-functor to convert the HH types and take an exclusive_scan of each
+	//this will let us build the adult_index and child_index arrays
+	thrust::exclusive_scan(
+		thrust::make_transform_iterator(hh_types_array.begin(), hh_adult_count_functor()),
+		thrust::make_transform_iterator(hh_types_array.end(), hh_adult_count_functor()),
+		adult_count_exclScan.begin());
+	thrust::exclusive_scan(
+		thrust::make_transform_iterator(hh_types_array.begin(), hh_child_count_functor()),
+		thrust::make_transform_iterator(hh_types_array.end(), hh_child_count_functor()),
+		child_count_exclScan.begin());
+	cudaDeviceSynchronize();
+	
+	/*
+	h_vec h_hh_types = hh_types_array;
+	h_vec h_child_count_exscan = child_count_exclScan;
+	h_vec h_adult_count_exscan = adult_count_exclScan;
+	FILE * ftemp = fopen("../households.txt","w");
+	fprintf(ftemp,"i,hh_type,adult_exscan,child_exscan\n");
+	for(int i = 0; i < number_households + 1; i++)
+		fprintf(ftemp, "%d,%d,%d,%d\n", i, h_hh_types[i], h_adult_count_exscan[i],h_child_count_exscan[i]);
+	fclose(ftemp);*/
+
+	//the exclusive_scan of number_households+1 holds the total number of adult and children in the sim
+	//(go one past the end to find the totals)
+	number_adults = adult_count_exclScan[number_households];
+	number_children = child_count_exclScan[number_households];
+	number_people = number_adults + number_children;
+	
+	//now we can allocate the rest of our memory
+	setup_sizeGlobalArrays();
+
+	int * adult_exscan_ptr = thrust::raw_pointer_cast(adult_count_exclScan.data());
+	int * child_exscan_ptr = thrust::raw_pointer_cast(child_count_exclScan.data());
+	int * adult_index_arr_ptr = thrust::raw_pointer_cast(people_adult_indexes.data());
+	int * child_index_arr_ptr = thrust::raw_pointer_cast(people_child_indexes.data());
+	int * people_age_arr_ptr =thrust::raw_pointer_cast(people_ages.data());
+	int * people_hh_arr_ptr = thrust::raw_pointer_cast(people_households.data());
+	int * people_wp_arr_ptr = thrust::raw_pointer_cast(people_workplaces.data());
+
+	//and then do the rest of the setup
+	kernel_generateHouseholds<<<cuda_blocks,cuda_threads>>>(
+		hh_types_array_ptr, adult_exscan_ptr, child_exscan_ptr, number_households,
+		adult_index_arr_ptr, child_index_arr_ptr,
+		people_age_arr_ptr, people_hh_arr_ptr, people_wp_arr_ptr,
+		rand_offset);
+
+	const int rand_counts_consumed_2 = 2 * number_households;
+	rand_offset += rand_counts_consumed_2;
+
+	if(PROFILE_SIMULATION)
+	{
+		cudaDeviceSynchronize();
+		profiler.endFunction(-1,number_people);
+	}
+}
+
+
+struct filterContacts_pred
+{
+	__device__ bool operator() (thrust::tuple<int,int,int> action_tuple)
+	{
+		int action_type = thrust::get<0>(action_tuple);
+
+		if(action_type == ACTION_INFECT_NONE)
+			return true;
+
+		return false;
+	}
+};
+
+struct actionSortOp_new
+{
+	__device__
+		bool operator () (thrust::tuple<int,int,int> a, thrust::tuple<int,int,int> b)
+	{
+
+		int victim_a = thrust::get<2>(a);
+		int victim_b = thrust::get<2>(b);
+
+		if(victim_a != victim_b)
+		{
+			return victim_a < victim_b;
+		}
+
+		int action_a = thrust::get<0>(a);
+		int action_b = thrust::get<0>(b);
+
+		return action_a > action_b;
+	}
+};
+
+
+void PandemicSim::daily_filterActions_new()
+{
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day,"daily_filterActions");
+
+	int num_possible_contacts = is_weekend() ? MAX_CONTACTS_WEEKEND * number_people : MAX_CONTACTS_WEEKDAY * number_people;
+
+	ZipIntTripleIterator actions_begin = 
+		thrust::make_zip_iterator(thrust::make_tuple(
+			daily_action_type.begin(), 
+			daily_contact_infectors.begin(), 
+			daily_contact_victims.begin()));
+
+	//compact - filter out null contacts
+	filterContacts_pred contact_filter_obj;
+	ZipIntTripleIterator actions_end = thrust::remove_if(
+		actions_begin,
+		thrust::make_zip_iterator(thrust::make_tuple(
+			daily_action_type.begin() + num_possible_contacts, 
+			daily_contact_infectors.begin() + num_possible_contacts, 
+			daily_contact_victims.begin() + num_possible_contacts)),
+		contact_filter_obj);
+
+	int size_a = actions_end - actions_begin;
+
+	//sort - by victim_id ascending, then by action code descending
+	thrust::sort(actions_begin, actions_end,actionSortOp_new());
+	
+	//unique - remove duplicate infection actions
+	actions_end = thrust::unique(actions_begin,actions_end,uniqueActionOp());
+
+	daily_actions = actions_end - actions_begin;
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day, infected_count);
+}
+
+__global__ void kernel_contactsToActions(int * infected_idx_arr, kval_t * infected_kval_sum_arr, int infected_count,
+										 int * contact_victims_arr, int *contact_type_arr, int contacts_per_infector,
+										 int * people_day_pandemic_arr, int * people_day_seasonal_arr,
+										 int * people_status_p_arr, int * people_status_s_arr,
+										 int * output_action_arr,
+										 int current_day, int rand_offset)
+{
+	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c[2];
+		unsigned int i[8];
+	} rand_union;
+
+	const int rand_counts_consumed = 4;
+
+	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < infected_count ; myPos += gridDim.x * blockDim.x)
+	{
+		int myIdx = infected_idx_arr[myPos];
+		kval_t kval_sum = infected_kval_sum_arr[myPos];
+
+		int status_p = people_status_p_arr[myIdx];
+		int status_s = people_status_s_arr[myIdx];
+
+		float inf_prob_p = -1.f;
+		float inf_prob_s = -1.f;
+
+		if(status_p >= 0)
+		{
+			int day_of_pandemic_infection = people_day_pandemic_arr[myIdx];
+			int profile_day_p = current_day - day_of_pandemic_infection;
+			inf_prob_p = device_calculateInfectionProbability(status_p,profile_day_p, STRAIN_PANDEMIC,kval_sum);
+		}
+		if(status_s >= 0)
+		{
+			int day_of_seasonal_infection = people_day_seasonal_arr[myIdx];
+			int profile_day_s = current_day - day_of_seasonal_infection;
+			inf_prob_s = device_calculateInfectionProbability(status_s,profile_day_s, STRAIN_SEASONAL,kval_sum);
+		}
+
+		int myRandOffset = rand_offset + (myPos * rand_counts_consumed);
+		threefry2x64_ctr_t tf_ctr_1 = {{((long) myRandOffset), ((long) myRandOffset)}};
+		rand_union.c[0] = threefry2x64(tf_ctr_1, tf_k);
+		threefry2x64_ctr_t tf_ctr_2 = {{((long) myRandOffset + 1), ((long) myRandOffset + 1)}};
+		rand_union.c[1] = threefry2x64(tf_ctr_2, tf_k);
+		threefry2x64_ctr_t tf_ctr_3 = {{((long) myRandOffset + 2), ((long) myRandOffset + 2)}};
+		rand_union.c[1] = threefry2x64(tf_ctr_3, tf_k);
+		threefry2x64_ctr_t tf_ctr_4 = {{((long) myRandOffset + 3), ((long) myRandOffset + 3)}};
+		rand_union.c[1] = threefry2x64(tf_ctr_4, tf_k);
+
+		int contact_offset_base = contacts_per_infector * myPos;
+		int rand_vals_used = 0;
+		for(int contacts_processed = 0; contacts_processed < contacts_per_infector; contacts_processed++)
+		{
+			int contact_victim = contact_victims_arr[contact_offset_base + contacts_processed];
+			int contact_type = contact_type_arr[contact_offset_base + contacts_processed];
+
+			kval_t contact_kval = KVAL_LOOKUP_DEVICE[contact_type];
+
+			float y_p = (float) rand_union.i[rand_vals_used++] / UNSIGNED_MAX;
+			bool infects_p = y_p < (float) (inf_prob_p * contact_kval);
+
+			float y_s = (float) rand_union.i[rand_vals_used++] / UNSIGNED_MAX;
+			bool infects_s = y_s < (float) (inf_prob_s * contact_kval);
+
+			//function handles parsing bools into an action and checking that victim is susceptible
+			device_checkActionAndWrite(
+				infects_p, infects_s, 
+				contact_victim, 
+				people_status_p_arr, people_status_s_arr,
+				output_action_arr + contact_offset_base + contacts_processed);
+		}
+	}
+}
+
+void PandemicSim::daily_contactsToActions_new()
+{
+	if(ACTION_INFECT_NONE != 0)
+		throw new std::runtime_error(std::string("ACTION_INFECT_NONE must be zero for memset!"));
+
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day,"daily_contactsToActions");
+
+	int contacts_per_infector = is_weekend() ? MAX_CONTACTS_WEEKEND : MAX_CONTACTS_WEEKDAY;
+	int total_contacts = contacts_per_infector * infected_count;
+
+	//memset a region to no_action
+	int * contact_action_type_ptr = thrust::raw_pointer_cast(daily_action_type.data());
+	cudaMemset(contact_action_type_ptr, 0, sizeof(int) * total_contacts);
+
+	int * infected_indexes_ptr = thrust::raw_pointer_cast(infected_indexes.data());
+	kval_t * infected_kval_sums_ptr = thrust::raw_pointer_cast(infected_daily_kval_sum.data());
+	
+	int * contact_victims_ptr = thrust::raw_pointer_cast(daily_contact_victims.data());
+	int * contact_types_ptr = thrust::raw_pointer_cast(daily_contact_kvals.data());
+
+	int * people_day_pandemic_ptr = thrust::raw_pointer_cast(people_days_pandemic.data());
+	int * people_day_seasonal_ptr = thrust::raw_pointer_cast(people_days_seasonal.data());
+
+	int * people_status_pandemic_ptr = thrust::raw_pointer_cast(people_status_pandemic.data());
+	int * people_status_seasonal_ptr = thrust::raw_pointer_cast(people_status_seasonal.data());
+
+	kernel_contactsToActions<<<cuda_blocks,cuda_threads>>>(
+		infected_indexes_ptr, infected_kval_sums_ptr, infected_count,
+		contact_victims_ptr, contact_types_ptr, contacts_per_infector,
+		people_day_pandemic_ptr, people_day_seasonal_ptr,
+		people_status_pandemic_ptr, people_status_seasonal_ptr,
+		contact_action_type_ptr,
+		current_day, rand_offset);
+
+	const int rand_counts_consumed = 4 * infected_count;
+	rand_offset += rand_counts_consumed;
+
+	if(PROFILE_SIMULATION)
+		profiler.endFunction(current_day, infected_count);
+}
+
+__device__ void device_assignProfile(unsigned int rand_val, int * output_status_ptr)
+{
+	//assign a profile between 0 and 2 inclusive
+	int profile = rand_val % 3;
+
+	//convert the rand to a float between 0 and 1
+	float y = (float) rand_val / UNSIGNED_MAX;
+
+	//if the symptomatic threshold is exceeded, make the profile asymptomatic
+	if(y > PERCENT_SYMPTOMATIC_DEVICE)
+		profile += 3;
+
+	*output_status_ptr = profile;
+}
+
+__device__ void device_doInfectionAction(
+	unsigned int rand_val1, unsigned int rand_val2,
+	int day_tomorrow,
+	int action_type, int infector, int victim,
+	int * people_status_p_arr, int * people_status_s_arr,
+	int * people_gen_p_arr, int * people_gen_s_arr,
+	int * people_day_p_arr, int * people_day_s_arr)
+{
+	if(action_type == ACTION_INFECT_BOTH || action_type == ACTION_INFECT_PANDEMIC)
+	{
+		//get infector's generation and increment for the victim
+		int inf_gen_p = people_gen_p_arr[infector];
+		people_gen_p_arr[victim] = inf_gen_p + 1;
+
+		//mark tomorrow as their first day of infection
+		people_day_p_arr[victim] = day_tomorrow;
+
+		//assign them a profile
+		device_assignProfile(rand_val1, people_status_p_arr + victim);
+	}
+	if(action_type == ACTION_INFECT_BOTH || action_type == ACTION_INFECT_SEASONAL)
+	{
+		//get infector's generation and increment for the victim
+		int inf_gen_s = people_gen_s_arr[infector];
+		people_gen_s_arr[victim] = inf_gen_s + 1;
+
+		//mark tomorrow as their first day of infection
+		people_day_s_arr[victim] = day_tomorrow;
+
+		//assign them a profile
+		device_assignProfile(rand_val2, people_status_s_arr + victim);
+	}
+}
+
+__global__ void kernel_doInfectionActions(
+	int * contact_action_arr, int * contact_victim_arr, int * contact_infector_arr,
+	int action_count,
+	int * people_status_p_arr, int * people_status_s_arr,
+	int * people_gen_p_arr, int * people_gen_s_arr,
+	int * people_day_p_arr, int * people_day_s_arr,
+	int day_tomorrow, int rand_offset)
+{
+	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} rand_union;
+
+	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <= action_count ; myGridPos += gridDim.x * blockDim.x)
+	{
+		int myPos = myGridPos * 2;
+
+		//get random numbers
+		int myRandOffset = rand_offset + myGridPos;
+		threefry2x64_ctr_t tf_ctr_1 = {{((long)myRandOffset), ((long)myRandOffset)}};
+		rand_union.c = threefry2x64(tf_ctr_1, tf_k);
+
+		if(myPos < action_count)
+		{
+			int action_type = contact_action_arr[myPos];
+			int victim = contact_victim_arr[myPos];
+			int infector = contact_infector_arr[myPos];
+
+			device_doInfectionAction(
+				rand_union.i[0],rand_union.i[1], 
+				day_tomorrow,
+				action_type, infector, victim,
+				people_status_p_arr, people_status_s_arr,
+				people_gen_p_arr,people_gen_s_arr,
+				people_day_p_arr, people_day_s_arr);
+		}
+		if(myPos + 1 < action_count)
+		{
+			int action_type = contact_action_arr[myPos+1];
+			int victim = contact_victim_arr[myPos+1];
+			int infector = contact_infector_arr[myPos+1];
+
+			device_doInfectionAction(
+				rand_union.i[1],rand_union.i[2], 
+				day_tomorrow,
+				action_type, infector, victim,
+				people_status_p_arr, people_status_s_arr,
+				people_gen_p_arr,people_gen_s_arr,
+				people_day_p_arr, people_day_s_arr);
+		}
+	}
+
+}
+
+
+void PandemicSim::daily_doInfectionActions()
+{
+	if(PROFILE_SIMULATION)
+		profiler.beginFunction(current_day, "daily_doInfectionActions");
+
+	int * contact_action_ptr = thrust::raw_pointer_cast(daily_action_type.data());
+	int * contact_infector_ptr = thrust::raw_pointer_cast(daily_contact_infectors.data());
+	int * contact_victim_ptr = thrust::raw_pointer_cast(daily_contact_victims.data());
+
+	int * people_status_p_ptr = thrust::raw_pointer_cast(people_status_pandemic.data());
+	int * people_status_s_ptr = thrust::raw_pointer_cast(people_status_seasonal.data());
+	int * people_gen_p_ptr = thrust::raw_pointer_cast(people_gens_pandemic.data());
+	int * people_gen_s_ptr = thrust::raw_pointer_cast(people_gens_seasonal.data());
+	int * people_days_p_ptr = thrust::raw_pointer_cast(people_days_pandemic.data());
+	int * people_days_s_ptr = thrust::raw_pointer_cast(people_days_seasonal.data());
+
+	kernel_doInfectionActions<<<cuda_blocks, cuda_threads>>>(
+		contact_action_ptr, contact_victim_ptr, contact_infector_ptr,
+		daily_actions,
+		people_status_p_ptr, people_status_s_ptr,
+		people_gen_p_ptr, people_gen_s_ptr,
+		people_days_p_ptr, people_days_s_ptr,
+		current_day + 1, rand_offset);
+
+	int rand_counts_consumed = daily_actions / 2;
+	rand_offset += rand_counts_consumed;
+
+	if(PROFILE_SIMULATION)
+	{
+		cudaDeviceSynchronize();
+		profiler.endFunction(current_day, daily_actions);
+	}
+}
+
+void PandemicSim::daily_countInfectedStats()
+{
+	//stores pandemic, then seasonal, then the day
+	d_vec status_counts(8 + 8);
+
+	//get pointers
+	int * pandemic_counts_ptr = thrust::raw_pointer_cast(status_counts.data());
+	int * seasonal_counts_ptr = pandemic_counts_ptr + 8;
+
+	/////NOTE:  this builds, but the code is completely untested, it should probably be tested in a synchronous fashion before using async
+	/*//memset to 0
+	cudaMemsetAsync(pandemic_counts_ptr, 0, sizeof(int) * 16,stream_countInfectedStatus);
+
+	int * status_pandemic_arr_ptr = thrust::raw_pointer_cast(people_status_pandemic.data());
+	int * status_seasonal_arr_ptr = thrust::raw_pointer_cast(people_status_seasonal.data());
+
+	size_t smemsize = 0;
+	kernel_countInfectedStatus<<<COUNTING_GRID_BLOCKS, COUNTING_GRID_THREADS,smemsize, stream_countInfectedStatus>>>(
+		status_pandemic_arr_ptr, status_seasonal_arr_ptr, 
+		number_people, 
+		pandemic_counts_ptr, seasonal_counts_ptr);
+	
+	cudaMemcpyAsync(&status_counts_today, pandemic_counts_ptr,sizeof(int) * 16,cudaMemcpyDeviceToHost,stream_countInfectedStatus);
+	cudaEventRecord(event_statusCountsReadyToDump,stream_countInfectedStatus);*/
 }
