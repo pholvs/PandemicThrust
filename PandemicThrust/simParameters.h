@@ -16,6 +16,7 @@
 const int NULL_PERSON_INDEX = -1;
 
 #define INITIAL_DAY 0
+#define INITIAL_GEN 0
 
 const int BUSINESS_TYPE_PRESCHOOL = 3;
 const int BUSINESS_TYPE_ELEMENTARYSCHOOL = 4;

@@ -120,3 +120,12 @@ struct uniqueActionOp
 	}
 
 };
+
+
+struct actionIsSuccessful_pred
+{
+	__device__ bool operator() (int action_type)
+	{
+		return action_type > 0;
+	}
+};
