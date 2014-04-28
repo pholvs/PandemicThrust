@@ -158,6 +158,7 @@ void PandemicSim::setupSim()
 	if(SIM_VALIDATION)
 	{
 		cudaDeviceSynchronize();
+
 		debug_sizeHostArrays();
 		debug_copyFixedData();
 		debug_validatePeopleSetup();
@@ -887,17 +888,17 @@ void PandemicSim::runToCompletion()
 
 		//build infected index array
 		daily_buildInfectedArray_global();
+		cudaDeviceSynchronize();
+
 		if(infected_count == 0)
 			break;
+
 		daily_clearActionsArray(); //must occur AFTER we have counted infected
 
 		if(SIM_VALIDATION)
 		{
 			debug_validateInfectionStatus();
-		}
 
-		if(debug_log_function_calls)
-		{
 			fprintf(fDebug, "\n\n---------------------\nday %d\ninfected: %d\n---------------------\n\n", current_day, infected_count);
 			fflush(fDebug);
 		}
@@ -1105,8 +1106,6 @@ void PandemicSim::setup_sizeGlobalArrays()
 
 	status_counts.resize(16);
 
-	setup_fetchVectorPtrs(); //get the raw int * pointers
-
 	if(SIM_VALIDATION)
 	{
 		debug_contactsToActions_float1.resize(expected_max_contacts);
@@ -1114,6 +1113,8 @@ void PandemicSim::setup_sizeGlobalArrays()
 		debug_contactsToActions_float3.resize(expected_max_contacts);
 		debug_contactsToActions_float4.resize(expected_max_contacts);
 	}
+
+	setup_fetchVectorPtrs(); //get the raw int * pointers
 
 	if(PROFILE_SIMULATION)
 	{
@@ -1161,6 +1162,7 @@ void PandemicSim::setup_scaleSimulation()
 		if(new_type_count == 0 && original_type_count > 0)
 			new_type_count = 1;
 
+		WORKPLACE_TYPE_COUNT_HOST[business_type] = new_type_count;
 		sum += new_type_count;
 	}
 
@@ -2748,6 +2750,9 @@ __device__ void device_checkActionAndWrite(bool infects_pandemic, bool infects_s
 
 __device__ float device_calculateInfectionProbability(int profile, int day_of_infection, int strain, kval_t kval_sum)
 {
+	if(kval_sum == 0)
+		kval_sum = 1;
+
 	//alpha: fraction of infectiousness that will occur on this day of infection for this profile
 	float alpha = VIRAL_SHEDDING_PROFILES_DEVICE[profile][day_of_infection];
 
@@ -2966,6 +2971,8 @@ void PandemicSim::setup_generateHouseholds()
 
 	//assign household types
 	kernel_householdTypeAssignment<<<cuda_householdTypeAssignmentKernel_blocks,cuda_householdTypeAssignmentKernel_threads>>>(hh_types_array_ptr, number_households,rand_offset);
+	cudaDeviceSynchronize();
+
 
 	if(TIMING_BATCH_MODE == 0)
 	{
@@ -3035,6 +3042,8 @@ void PandemicSim::setup_generateHouseholds()
 
 	thrust::sequence(household_people.begin(), household_people.begin() + number_people); //copy the ID numbers into the household_people table
 	household_offsets[number_households] = number_people;  //put the last household_offset in position
+
+	cudaDeviceSynchronize();
 
 	if(PROFILE_SIMULATION)
 	{
@@ -3138,6 +3147,9 @@ __global__ void kernel_contactsToActions(int * infected_idx_arr, kval_t * infect
 		int myIdx = infected_idx_arr[myPos];
 		kval_t kval_sum = infected_kval_sum_arr[myPos];
 
+//		if(kval_sum == 0)
+//			continue;
+
 		int status_p = people_status_p_arr[myIdx];
 		int status_s = people_status_s_arr[myIdx];
 
@@ -3212,11 +3224,6 @@ void PandemicSim::daily_contactsToActions_new()
 
 	int contacts_per_infector = is_weekend() ? MAX_CONTACTS_WEEKEND : MAX_CONTACTS_WEEKDAY;
 	int total_contacts = contacts_per_infector * infected_count;
-
-//	float * rand1 = thrust::raw_pointer_cast(debug_float1.data());
-//	float * rand2 = thrust::raw_pointer_cast(debug_float2.data());
-//	float * rand3 = thrust::raw_pointer_cast(debug_float3.data());
-//	float * rand4 = thrust::raw_pointer_cast(debug_float4.data());
 
 	kernel_contactsToActions<<<cuda_contactsToActionsKernel_blocks,cuda_contactsToActionsKernel_threads>>>(
 		infected_indexes_ptr, infected_daily_kval_sum_ptr, infected_count,

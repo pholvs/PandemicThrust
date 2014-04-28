@@ -1,5 +1,7 @@
 #include "resource_logging.h"
 
+#define VISUAL_STUDIO 1
+
 FILE * fMemory = NULL;
 size_t initial_free_bytes;
 size_t initial_total_bytes;
@@ -24,7 +26,10 @@ void logging_pollMemUsage_doSetup(bool log_memory_usage, bool outputFilesInParen
 			fMemory = fopen("output_mem.csv","w");
 		fprintf(fMemory, "day,freeBytes,bytesUsed,totalBytes,megabytesUsed\n");
 
-		fprintf(fMemory, "INITIAL,%zu,0,%zu,0\n", initial_free_bytes, initial_total_bytes);
+		if(VISUAL_STUDIO)
+			fprintf(fMemory,"INITIAL,%u,0,%u,0\n");
+		else
+			fprintf(fMemory, "INITIAL,%zu,0,%zu,0\n", initial_free_bytes, initial_total_bytes);
 	}
 
 	//record the start event
@@ -42,9 +47,13 @@ void logging_pollMemoryUsage_takeSample(int day)
 
 	if(bytes_used > max_memory_used)
 		max_memory_used = bytes_used;
-
-	fprintf(fMemory, "%d,%zu,%zu,%zu,%zu\n",
-		day, current_free_bytes, bytes_used, current_total_bytes, megabytes_used);
+	
+	if(VISUAL_STUDIO)
+		fprintf(fMemory,"%d,%u,%u,%u,%u\n",
+			day, current_free_bytes, bytes_used, current_total_bytes, megabytes_used);
+	else
+		fprintf(fMemory, "%d,%zu,%zu,%zu,%zu\n",
+			day, current_free_bytes, bytes_used, current_total_bytes, megabytes_used);
 }
 
 void logging_pollMemoryUsage_done()
@@ -69,8 +78,13 @@ void logging_pollMemoryUsage_done()
 
 	FILE * fResourceLog = fopen("output_resource_log.csv", "w");
 	fprintf(fResourceLog, "runtime_milliseconds,runtime_seconds,bytes_used,megabytes_used\n");
-	fprintf(fResourceLog, "%f,%f,%zu,%zu\n",
-		elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
+
+	if(VISUAL_STUDIO)
+		fprintf(fResourceLog,"%f,%f,%u,%u\n",
+			elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
+	else
+		fprintf(fResourceLog, "%f,%f,%zu,%zu\n",
+			elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
 	fclose(fResourceLog);
 
 

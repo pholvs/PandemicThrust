@@ -153,7 +153,6 @@ void PandemicSim::validateContacts_wholeDay()
 	}*/
 
 
-
 	debug_validateErrandSchedule();
 	debug_validateInfectedLocArrays();
 
@@ -191,12 +190,12 @@ void PandemicSim::validateContacts_wholeDay()
 			}
 			if(contact_infector < 0 || contact_infector >= number_people)
 			{
-				debug_print("contact_infector is out of range");
+//				debug_print("contact_infector is out of range");
 				abort_check = true;
 			}
 			if(contact_victim < 0 || contact_victim >= number_people)
 			{
-				debug_print("contact_victim is out of range");
+//				debug_print("contact_victim is out of range");
 				abort_check = true;
 			}
 			if(contact_type == CONTACT_TYPE_NONE)
@@ -414,7 +413,7 @@ void PandemicSim::debug_copyErrandLookup()
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day,"debug_copyErrandLookup");
 
-	int num_errands = num_infected_errands_today();
+	int num_errands = number_people * errands_per_person();
 	if(is_weekend())
 	{
 		thrust::copy_n(errand_people_destinations.begin(), num_errands, h_errand_people_destinations.begin());
@@ -577,7 +576,8 @@ void PandemicSim::debug_validateErrandSchedule()
 			
 			if(myAge == AGE_ADULT || weekend)
 			{
-
+				bool errand_loc_test = errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[first_errand_row];
+				bool errand_loc_test_2 = errand_loc < number_workplaces;
 				debug_assert(errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[first_errand_row] && errand_loc < number_workplaces, "person location is not valid for errand PDF, person", myIdx);
 			}
 			else
@@ -637,7 +637,7 @@ void PandemicSim::debug_validateLocationArrays()
 	h_vec h_sorted_dests(num_errands_total);
 	thrust::copy_n(errand_people_destinations.begin(), num_errands_total, h_sorted_dests.begin());
 
-	debug_dumpWeekendErrandTables(&h_sorted_people, &h_sorted_hours, &h_sorted_dests);
+//	debug_dumpWeekendErrandTables(&h_sorted_people, &h_sorted_hours, &h_sorted_dests);
 	thrust::copy_n(errand_locationOffsets_multiHour.begin(),number_workplaces * num_errand_hours, h_errand_locationOffsets_multiHour.begin());
 
 
@@ -718,6 +718,8 @@ void PandemicSim::debug_validatePeopleSetup()
 {
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day,"debug_validatePeopleSetup");
+
+
 
 	bool households_are_sorted = thrust::is_sorted(people_households.begin(), people_households.begin() + number_people);
 	debug_assert(households_are_sorted, "household indexes are not monotonically increasing");
@@ -963,13 +965,17 @@ void PandemicSim::debug_validateActions()
 			debug_assert(y_p >= 0.f && y_p <= 1.0f, "y_p out of valid range, person", infector);
 			debug_assert(y_s >= 0.f && y_s <= 1.0f, "y_s out of valid range, person", infector);
 			
+			if(infector == 10643)
+				printf("");
+
 			if(infector_status_p >= 0)
 			{
 				debug_assert(inf_prob_p >= 0.f, "infector has pandemic but no chance of infection, infector ", infector);
 			}
 			else
 			{
-				debug_assert(inf_prob_p < 0.f, "infector does not have pandemic, but chance is > 0, infector ", infector);
+				//note: <=, or else you will get warnings when non-infected people have contact_type_none
+				debug_assert(inf_prob_p <= 0.f, "infector does not have pandemic, but chance is > 0, infector ", infector);
 			}
 
 			if(infector_status_s >= 0)
@@ -978,7 +984,8 @@ void PandemicSim::debug_validateActions()
 			}
 			else
 			{
-				debug_assert(inf_prob_s < 0.f, "infector does not have seasonal, but chance is > 0, infector", infector);
+				//note: <=, or else you will get warnings when non-infected people have contact_type_none
+				debug_assert(inf_prob_s <= 0.f, "infector does not have seasonal, but chance is > 0, infector", infector);
 			}
 
 			bool infects_p = y_p < inf_prob_p;

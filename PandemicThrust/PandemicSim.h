@@ -386,10 +386,10 @@ __device__ void device_doInfectionAction(
 __device__ void device_assignProfile(unsigned int rand_val, int * output_status_ptr);
 
 void n_unique_numbers(h_vec * array, int n, int max);
-inline char * action_type_to_string(int action);
-inline char status_int_to_char(int s);
-inline int lookup_school_typecode_from_age_code(int age_code);
-inline char * profile_int_to_string(int p);
+extern inline char * action_type_to_string(int action);
+extern inline char status_int_to_char(int s);
+extern inline int lookup_school_typecode_from_age_code(int age_code);
+extern inline char * profile_int_to_string(int p);
 
 extern inline const char * lookup_contact_type(int contact_type);
 extern inline const char * lookup_workplace_type(int workplace_type);
