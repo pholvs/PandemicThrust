@@ -2312,7 +2312,7 @@ __device__ void device_fishWeekdayErrandDestination(unsigned int * rand_val, int
 }
 
 
-inline const char * lookup_contact_type(int contact_type)
+const char * lookup_contact_type(int contact_type)
 {
 	switch(contact_type)
 	{
