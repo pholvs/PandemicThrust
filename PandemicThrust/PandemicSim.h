@@ -8,6 +8,10 @@
 
 #include "resource_logging.h"
 
+#ifndef __max
+#define __max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #define COUNTING_GRID_BLOCKS 32
 #define COUNTING_GRID_THREADS 256
 #define CONSOLE_OUTPUT 0
