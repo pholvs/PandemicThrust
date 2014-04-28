@@ -12,7 +12,7 @@
 //output status messages to console?  Slows things down
 
 //Simulation profiling master control - low performance overhead
-const int PROFILE_SIMULATION = 1;
+const int PROFILE_SIMULATION = 0;
 
 
 int cuda_blocks = 32;
@@ -50,8 +50,8 @@ float BASE_REPRODUCTION_HOST[STRAIN_COUNT];
 __device__ __constant__ float INFECTIOUSNESS_FACTOR_DEVICE[STRAIN_COUNT];
 float INFECTIOUSNESS_FACTOR_HOST[STRAIN_COUNT];
 
-__device__ __constant__ float PERCENT_SYMPTOMATIC_DEVICE;
-float PERCENT_SYMPTOMATIC_HOST;
+__device__ __constant__ float PERCENT_SYMPTOMATIC_DEVICE[1];
+float PERCENT_SYMPTOMATIC_HOST[1];
 
 __device__ __constant__ kval_t KVAL_LOOKUP_DEVICE[NUM_CONTACT_TYPES];
 kval_t KVAL_LOOKUP_HOST[NUM_CONTACT_TYPES];
@@ -249,7 +249,7 @@ void PandemicSim::setup_loadParameters()
 	setup_loadSeed();
 
 	//if printing seeds is desired for debug, etc
-	if(1)
+	if(CONSOLE_OUTPUT)
 	{
 		printf("seeds:\t");
 		for(int i = 0; i < SEED_LENGTH; i++)
@@ -280,7 +280,7 @@ void PandemicSim::setup_loadParameters()
 	fscanf(fConstants, "%d%*c", &INITIAL_INFECTED_PANDEMIC);
 	fscanf(fConstants, "%d%*c", &INITIAL_INFECTED_SEASONAL);
 	fscanf(fConstants, "%f%*c", &sim_scaling_factor);
-	fscanf(fConstants, "%f%*c", &PERCENT_SYMPTOMATIC_HOST);
+	fscanf(fConstants, "%f%*c", PERCENT_SYMPTOMATIC_HOST);
 	fscanf(fConstants, "%f", &asymp_factor);
 	fclose(fConstants);
 
@@ -648,8 +648,8 @@ void PandemicSim::setup_pushDeviceData()
 		0,cudaMemcpyHostToDevice);
 
 	cudaMemcpyToSymbolAsync(
-		&PERCENT_SYMPTOMATIC_DEVICE,
-		&PERCENT_SYMPTOMATIC_HOST,
+		PERCENT_SYMPTOMATIC_DEVICE,
+		PERCENT_SYMPTOMATIC_HOST,
 		sizeof(float) * 1,
 		0,cudaMemcpyHostToDevice);
 
@@ -724,10 +724,7 @@ void PandemicSim::setup_buildFixedLocations()
 	///////////////////////////////////////
 	//home/////////////////////////////////
 
-	//moved to size_global_arrays func
-	//household_offsets.resize(number_households + 1);
-	//household_people.resize(number_people);
-
+	//disabled: now done in generateHouseholds() function
 	/*thrust::sequence(household_people.begin(), household_people.begin() + number_people);	//fill array with IDs to sort
 	calcLocationOffsets(
 		&household_people,
@@ -737,8 +734,6 @@ void PandemicSim::setup_buildFixedLocations()
 
 	///////////////////////////////////////
 	//work/////////////////////////////////
-	//workplace_offsets.resize(number_workplaces + 1);	//size arrays
-	//workplace_people.resize(number_people);
 
 	thrust::sequence(workplace_people.begin(), workplace_people.begin() + number_people);	//fill array with IDs to sort
 
@@ -888,7 +883,8 @@ void PandemicSim::runToCompletion()
 
 		//build infected index array
 		daily_buildInfectedArray_global();
-		cudaDeviceSynchronize();
+		if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+			cudaDeviceSynchronize();
 
 		if(infected_count == 0)
 			break;
@@ -924,7 +920,7 @@ void PandemicSim::runToCompletion()
 		//PROCESS CONTACTS AND UPDATE INFECTED
 		dailyUpdate();
 
-		if(1)
+		if(0)
 			fflush(f_outputInfectedStats);
 
 		//if we're using the profiler, flush each day in case of crash
@@ -1207,7 +1203,9 @@ void PandemicSim::doWeekday_wholeDay()
 	//generate errands and afterschool locations
 	weekday_scatterAfterschoolLocations_wholeDay(&errand_people_destinations);
 	weekday_scatterErrandDestinations_wholeDay(&errand_people_destinations);
-	cudaDeviceSynchronize();
+
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 //	debug_dump_array_toTempFile("../unsorted_dests.txt","errand dest", &errand_people_destinations, number_people * NUM_WEEKDAY_ERRAND_HOURS);
 
@@ -1215,7 +1213,8 @@ void PandemicSim::doWeekday_wholeDay()
 	weekday_doInfectedSetup_wholeDay(&errand_people_destinations, &errand_infected_locations, &errand_infected_ContactsDesired);
 	if(SIM_VALIDATION)
 		debug_copyErrandLookup();	//debug: copy the lookup tables to host memory before they are sorted
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 
 	//generate location arrays for each hour
@@ -1270,7 +1269,8 @@ void PandemicSim::doWeekday_wholeDay()
 		const int rand_counts_consumed = 2;
 		rand_offset += (rand_counts_consumed * infected_count);
 	}
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 	if(SIM_VALIDATION)
 		validateContacts_wholeDay();
@@ -1316,13 +1316,15 @@ void PandemicSim::doWeekend_wholeDay()
 
 	//assign all weekend errands
 	weekend_assignErrands(&errand_people_table, &errand_people_weekendHours, &errand_people_destinations);
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 	//fish the infected errands out
 	weekend_doInfectedSetup_wholeDay(&errand_people_weekendHours,&errand_people_destinations, &errand_infected_weekendHours, &errand_infected_locations, &errand_infected_ContactsDesired);
 	if(SIM_VALIDATION)
 		debug_copyErrandLookup();
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 	//each person gets 3 errands
 	const int num_weekend_errands_total = NUM_WEEKEND_ERRANDS * number_people;
@@ -1364,12 +1366,14 @@ void PandemicSim::doWeekend_wholeDay()
 			errand_locationOffsets_multiHour.begin() + location_offset_start);
 	}
 
-	debug_validateLocationArrays();
+	if(SIM_VALIDATION)
+		debug_validateLocationArrays();
 //	debug_dump_array_toTempFile("../weekend_loc_offsets.csv","loc offset",&errand_locationOffsets_multiHour, (NUM_WEEKEND_ERRAND_HOURS * number_workplaces));
 
 
 	//launch kernel
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 	makeContactsKernel_weekend<<<cuda_makeWeekendContactsKernel_blocks,cuda_makeWeekendContactsKernel_threads>>>(
 		infected_count, infected_indexes_ptr,
@@ -1385,9 +1389,10 @@ void PandemicSim::doWeekend_wholeDay()
 		int rand_counts_used = 2 * infected_count;
 		rand_offset += rand_counts_used;
 	}
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
-	if(log_contacts)
+	if(SIM_VALIDATION)
 		validateContacts_wholeDay();
 
 	if(PROFILE_SIMULATION)
@@ -2971,7 +2976,8 @@ void PandemicSim::setup_generateHouseholds()
 
 	//assign household types
 	kernel_householdTypeAssignment<<<cuda_householdTypeAssignmentKernel_blocks,cuda_householdTypeAssignmentKernel_threads>>>(hh_types_array_ptr, number_households,rand_offset);
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 
 	if(TIMING_BATCH_MODE == 0)
@@ -2994,7 +3000,8 @@ void PandemicSim::setup_generateHouseholds()
 		thrust::make_transform_iterator(hh_types_array.begin(), hh_child_count_functor()),
 		thrust::make_transform_iterator(hh_types_array.end(), hh_child_count_functor()),
 		child_count_exclScan.begin());
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 	
 	/*
 	h_vec h_hh_types = hh_types_array;
@@ -3043,7 +3050,8 @@ void PandemicSim::setup_generateHouseholds()
 	thrust::sequence(household_people.begin(), household_people.begin() + number_people); //copy the ID numbers into the household_people table
 	household_offsets[number_households] = number_people;  //put the last household_offset in position
 
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 	if(PROFILE_SIMULATION)
 	{
@@ -3239,7 +3247,8 @@ void PandemicSim::daily_contactsToActions_new()
 		int rand_counts_consumed = 4 * infected_count;
 		rand_offset += rand_counts_consumed;
 	}
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 	if(SIM_VALIDATION)
 	{
@@ -3382,7 +3391,8 @@ void PandemicSim::daily_doInfectionActions()
 		rand_offset += rand_counts_consumed;
 	}
 
-	cudaDeviceSynchronize();
+	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
+		cudaDeviceSynchronize();
 
 	if(PROFILE_SIMULATION)
 	{
@@ -3448,7 +3458,6 @@ void PandemicSim::setup_fetchVectorPtrs()
 
 	if(PROFILE_SIMULATION)
 	{
-		cudaDeviceSynchronize();
 		profiler.endFunction(-1,1);
 	}
 }
@@ -3536,7 +3545,7 @@ void PandemicSim::setup_calculateInfectionData()
 	//calculate reproduction factors
 	for(int i = 0; i < STRAIN_COUNT; i++)
 	{
-		INFECTIOUSNESS_FACTOR_HOST[i] = BASE_REPRODUCTION_HOST[i] / ((1.0f - asymp_factor) * PERCENT_SYMPTOMATIC_HOST);
+		INFECTIOUSNESS_FACTOR_HOST[i] = BASE_REPRODUCTION_HOST[i] / ((1.0f - asymp_factor) * PERCENT_SYMPTOMATIC_HOST[0]);
 	}
 }
 /*

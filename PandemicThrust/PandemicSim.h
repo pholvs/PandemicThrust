@@ -10,14 +10,16 @@
 
 #define COUNTING_GRID_BLOCKS 32
 #define COUNTING_GRID_THREADS 256
-#define CONSOLE_OUTPUT 1
+#define CONSOLE_OUTPUT 0
 #define TIMING_BATCH_MODE 0
 #define OUTPUT_FILES_IN_PARENTDIR 1
 #define POLL_MEMORY_USAGE 1
 #define debug_null_fill_daily_arrays 1
 
+#define DEBUG_SYNCHRONIZE_NEAR_KERNELS 0
+
 //sim_validation must be 1 to log things
-#define SIM_VALIDATION 1
+#define SIM_VALIDATION 0
 
 #define log_contacts 1
 #define log_infected_info 0

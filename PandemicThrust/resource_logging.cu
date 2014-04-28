@@ -1,6 +1,10 @@
 #include "resource_logging.h"
 
+#ifdef _MSC_VER
 #define VISUAL_STUDIO 1
+#else
+#define VISUAL_STUDIO 0
+#endif
 
 FILE * fMemory = NULL;
 size_t initial_free_bytes;
@@ -27,7 +31,7 @@ void logging_pollMemUsage_doSetup(bool log_memory_usage, bool outputFilesInParen
 		fprintf(fMemory, "day,freeBytes,bytesUsed,totalBytes,megabytesUsed\n");
 
 		if(VISUAL_STUDIO)
-			fprintf(fMemory,"INITIAL,%u,0,%u,0\n");
+			fprintf(fMemory,"INITIAL,%Iu,0,%Iu,0\n");
 		else
 			fprintf(fMemory, "INITIAL,%zu,0,%zu,0\n", initial_free_bytes, initial_total_bytes);
 	}
@@ -49,7 +53,7 @@ void logging_pollMemoryUsage_takeSample(int day)
 		max_memory_used = bytes_used;
 	
 	if(VISUAL_STUDIO)
-		fprintf(fMemory,"%d,%u,%u,%u,%u\n",
+		fprintf(fMemory,"%d,%Iu,%Iu,%Iu,%Iu\n",
 			day, current_free_bytes, bytes_used, current_total_bytes, megabytes_used);
 	else
 		fprintf(fMemory, "%d,%zu,%zu,%zu,%zu\n",
@@ -80,7 +84,7 @@ void logging_pollMemoryUsage_done()
 	fprintf(fResourceLog, "runtime_milliseconds,runtime_seconds,bytes_used,megabytes_used\n");
 
 	if(VISUAL_STUDIO)
-		fprintf(fResourceLog,"%f,%f,%u,%u\n",
+		fprintf(fResourceLog,"%f,%f,%Iu,%Iu\n",
 			elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
 	else
 		fprintf(fResourceLog, "%f,%f,%zu,%zu\n",
