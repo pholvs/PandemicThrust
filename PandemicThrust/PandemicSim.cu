@@ -8,6 +8,7 @@
 
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/scan.h>
+#include <stdexcept>
 
 //output status messages to console?  Slows things down
 
