@@ -5,6 +5,7 @@
     <CudaCompile Include="PandemicSim.cu" />
     <CudaCompile Include="main.cu" />
     <CudaCompile Include="debug.cu" />
+    <CudaCompile Include="resource_logging.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp" />
@@ -26,6 +27,9 @@
       <Filter>Header files</Filter>
     </ClInclude>
     <ClInclude Include="thrust_functors.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource_logging.h">
       <Filter>Header files</Filter>
     </ClInclude>
   </ItemGroup>

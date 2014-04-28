@@ -6,11 +6,28 @@
 #include "profiler.h"
 #include "indirect.h"
 
-#define SIM_VALIDATION 1
+#include "resource_logging.h"
 
 #define COUNTING_GRID_BLOCKS 32
 #define COUNTING_GRID_THREADS 256
+#define CONSOLE_OUTPUT 1
+#define TIMING_BATCH_MODE 0
+#define OUTPUT_FILES_IN_PARENTDIR 1
+#define POLL_MEMORY_USAGE 1
+#define debug_null_fill_daily_arrays 1
 
+//sim_validation must be 1 to log things
+#define SIM_VALIDATION 1
+
+#define log_contacts 1
+#define log_infected_info 0
+#define log_location_info 0
+#define log_actions 0
+#define log_actions_filtered 0
+#define log_people_info 0
+
+//low overhead
+#define debug_log_function_calls 0
 
 #define CULMINATION_PERIOD 10
 #define NUM_BUSINESS_TYPES 14
@@ -27,6 +44,7 @@ const int MAX_CONTACTS_WEEKEND = 5;
 //typedef unsigned long long randOffset_t;
 
 typedef unsigned int randOffset_t;
+typedef int personId_t;
 
 class PandemicSim
 {
@@ -43,6 +61,9 @@ public:
 
 	void setupSim();
 	void setup_loadParameters();
+	void setup_loadSeed();
+	void setup_loadFourSeeds();
+
 	void setup_calculateInfectionData();
 	void setup_generateHouseholds();
 
@@ -53,7 +74,7 @@ public:
 	void setup_fetchVectorPtrs();
 
 	void setup_scaleSimulation();
-	//void setup_setCudaTopology();
+	void setup_setCudaTopology();
 
 	void setup_calcLocationOffsets(vec_t * ids_to_sort,vec_t lookup_table_copy,	vec_t * location_offsets,int num_people, int num_locs);
 
@@ -163,10 +184,14 @@ public:
 
 
 	//DEBUG: these can be used to dump kernel internal data
-	thrust::device_vector<float> debug_float1;
-	thrust::device_vector<float> debug_float2;
-	thrust::device_vector<float> debug_float3;
-	thrust::device_vector<float> debug_float4;
+	thrust::device_vector<float> debug_contactsToActions_float1;
+	float * debug_contactsToActions_float1_ptr;
+	thrust::device_vector<float> debug_contactsToActions_float2;
+	float * debug_contactsToActions_float2_ptr;
+	thrust::device_vector<float> debug_contactsToActions_float3;
+	float * debug_contactsToActions_float3_ptr;
+	thrust::device_vector<float> debug_contactsToActions_float4;
+	float * debug_contactsToActions_float4_ptr;
 
 	//new whole-day contact methods
 
@@ -193,6 +218,11 @@ public:
 	void debug_dumpWeekendErrandTables(h_vec * h_sorted_people, h_vec * h_sorted_hours, h_vec * h_sorted_dests);
 
 	void debug_validatePeopleSetup();
+	void debug_freshenPeopleStatus();
+	void debug_freshenErrands();
+	void debug_freshenInfected();
+	void debug_freshenContacts();
+	void debug_freshenActions();
 	void debug_validateLocationArrays();
 	void debug_validateInfectionStatus();
 
@@ -209,20 +239,42 @@ public:
 
 	void daily_clearActionsArray();
 
+
 	d_vec status_counts;
 	int * status_counts_dev_ptr;
 	int status_counts_today[16];
 
 	cudaStream_t stream_secondary;
 
+	int cuda_householdTypeAssignmentKernel_blocks;
+	int cuda_householdTypeAssignmentKernel_threads;
+
+	int cuda_peopleGenerationKernel_blocks;
+	int cuda_peopleGenerationKernel_threads;
+
+	int cuda_makeWeekdayContactsKernel_blocks;
+	int cuda_makeWeekdayContactsKernel_threads;
+
+	int cuda_makeWeekendContactsKernel_blocks;
+	int cuda_makeWeekendContactsKernel_threads;
+
+	int cuda_contactsToActionsKernel_blocks;
+	int cuda_contactsToActionsKernel_threads;
+
+	int cuda_doInfectionActionsKernel_blocks;
+	int cuda_doInfectionAtionsKernel_threads;
+
 	//TO REMOVE:
-	void debug_dumpRandArrays();
+	void debug_validateActions();
 	void debug_helper();
 };
 
 #define day_of_week() (current_day % 7)
 #define is_weekend() (day_of_week() >= 5)
-//#define is_weekend() (0)
+#define errands_per_person() (is_weekend()? NUM_WEEKEND_ERRANDS : NUM_WEEKDAY_ERRANDS)
+#define contacts_per_person() (is_weekend() ? MAX_CONTACTS_WEEKEND : MAX_CONTACTS_WEEKDAY)
+#define num_infected_contacts_today() (is_weekend() ? infected_count * MAX_CONTACTS_WEEKEND : infected_count * MAX_CONTACTS_WEEKDAY)
+#define num_infected_errands_today() (is_weekend() ? infected_count * NUM_WEEKEND_ERRANDS : infected_count * NUM_WEEKDAY_ERRANDS)
 
 
 int roundHalfUp_toInt(double d);

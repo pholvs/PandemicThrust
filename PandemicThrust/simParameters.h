@@ -1,6 +1,5 @@
 #pragma once
 
-
 #define ACTION_INFECT_NONE 0
 #define ACTION_INFECT_SEASONAL 1
 #define ACTION_INFECT_PANDEMIC 2
@@ -13,7 +12,7 @@
 
 #define DAY_NOT_INFECTED -1
 #define GENERATION_NOT_INFECTED -1
-const int NULL_PERSON_INDEX = -1;
+#define NULL_PERSON_INDEX -1;
 
 #define INITIAL_DAY 0
 #define INITIAL_GEN 0
