@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <string>
+#include <stdexcept>
 
 //call once to initialize the
 void CudaProfiler::initStack()
