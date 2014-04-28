@@ -392,19 +392,20 @@ __device__ void device_doInfectionAction(
 __device__ void device_assignProfile(unsigned int rand_val, int * output_status_ptr);
 
 void n_unique_numbers(h_vec * array, int n, int max);
-extern inline char * action_type_to_string(int action);
-extern inline char status_int_to_char(int s);
-extern inline int lookup_school_typecode_from_age_code(int age_code);
-extern inline char * profile_int_to_string(int p);
 
-extern inline const char * lookup_contact_type(int contact_type);
-extern inline const char * lookup_workplace_type(int workplace_type);
-extern inline const char * lookup_age_type(int age_type);
+char * action_type_to_string(int action);
+char status_int_to_char(int s);
+int lookup_school_typecode_from_age_code(int age_code);
+char * profile_int_to_string(int p);
 
-extern inline void debug_print(char * message);
-extern inline void debug_assert(bool condition, char * message);
-extern inline void debug_assert(char *message, int expected, int actual);
-extern inline void debug_assert(bool condition, char * message, int idx);
+const char * lookup_contact_type(int contact_type);
+const char * lookup_workplace_type(int workplace_type);
+const char * lookup_age_type(int age_type);
+
+void debug_print(char * message);
+void debug_assert(bool condition, char * message);
+void debug_assert(char *message, int expected, int actual);
+void debug_assert(bool condition, char * message, int idx);
 
 
 extern const int FIRST_WEEKDAY_ERRAND_ROW;
