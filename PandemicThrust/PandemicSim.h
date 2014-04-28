@@ -16,7 +16,7 @@
 #define COUNTING_GRID_THREADS 256
 #define CONSOLE_OUTPUT 0
 #define TIMING_BATCH_MODE 0
-#define OUTPUT_FILES_IN_PARENTDIR 1
+#define OUTPUT_FILES_IN_PARENTDIR 0
 #define POLL_MEMORY_USAGE 1
 #define debug_null_fill_daily_arrays 1
 
