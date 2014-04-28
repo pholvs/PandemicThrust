@@ -1617,7 +1617,7 @@ __global__ void kernel_doInfectedSetup_weekday_wholeDay(int * infected_index_arr
 
 #pragma region debug_printing_funcs
 
-inline void debug_print(char * message)
+void debug_print(char * message)
 {
 	fprintf(fDebug, "%s\n", message);
 	fflush(fDebug);
@@ -1625,7 +1625,7 @@ inline void debug_print(char * message)
 
 
 
-inline void debug_assert(bool condition, char * message)
+void debug_assert(bool condition, char * message)
 {
 	if(!condition)
 	{
@@ -1634,7 +1634,7 @@ inline void debug_assert(bool condition, char * message)
 	}
 }
 
-inline void debug_assert(char *message, int expected, int actual)
+void debug_assert(char *message, int expected, int actual)
 {
 	if(expected != actual)
 	{
@@ -1643,7 +1643,7 @@ inline void debug_assert(char *message, int expected, int actual)
 	}
 }
 
-inline void debug_assert(bool condition, char * message, int idx)
+void debug_assert(bool condition, char * message, int idx)
 {
 	if(!condition)
 	{
@@ -1654,7 +1654,7 @@ inline void debug_assert(bool condition, char * message, int idx)
 
 #pragma region debug_lookup_funcs
 
-inline char status_int_to_char(int s)
+char status_int_to_char(int s)
 {
 	switch(s)
 	{
@@ -1669,7 +1669,7 @@ inline char status_int_to_char(int s)
 	}
 }
 
-inline char * action_type_to_string(int action)
+char * action_type_to_string(int action)
 {
 	switch(action)
 	{
@@ -1686,7 +1686,7 @@ inline char * action_type_to_string(int action)
 	}
 }
 
-inline int lookup_school_typecode_from_age_code(int age_code)
+int lookup_school_typecode_from_age_code(int age_code)
 {
 	switch(age_code)
 	{
