@@ -47,7 +47,6 @@ float BASE_REPRODUCTION_HOST[STRAIN_COUNT];
 #define BASE_R_PANDEMIC_HOST BASE_REPRODUCTION_HOST[0]
 #define BASE_R_SEASONAL_HOST BASE_REPRODUCTION_HOST[1]
 
-
 __device__ __constant__ float INFECTIOUSNESS_FACTOR_DEVICE[STRAIN_COUNT];
 float INFECTIOUSNESS_FACTOR_HOST[STRAIN_COUNT];
 
@@ -69,6 +68,9 @@ __device__ __constant__ int WORKPLACE_TYPE_COUNT_DEVICE[NUM_BUSINESS_TYPES];				
 int WORKPLACE_TYPE_MAX_CONTACTS_HOST[NUM_BUSINESS_TYPES];
 __device__ __constant__ int WORKPLACE_TYPE_MAX_CONTACTS_DEVICE[NUM_BUSINESS_TYPES];
 
+//future experiment: const vs global memory
+//__device__ float VIRAL_SHEDDING_PROFILES_GLOBALMEM[NUM_PROFILES][CULMINATION_PERIOD];
+//__constant__ float VIRAL_SHEDDING_PROFILES_CONSTMEM[NUM_PROFILES][CULMINATION_PERIOD];
 
 __device__ __constant__ float VIRAL_SHEDDING_PROFILES_DEVICE[NUM_PROFILES][CULMINATION_PERIOD];
 float VIRAL_SHEDDING_PROFILES_HOST[NUM_PROFILES][CULMINATION_PERIOD];
@@ -654,8 +656,19 @@ void PandemicSim::setup_pushDeviceData()
 		sizeof(float) * 1,
 		0,cudaMemcpyHostToDevice);
 
-	//must synchronize later!
+	//future experiment: constant vs global memory
+/*	cudaMemcpyToSymbolAsync(
+		VIRAL_SHEDDING_PROFILES_GLOBALMEM,
+		VIRAL_SHEDDING_PROFILES_HOST,
+		sizeof(float) * NUM_PROFILES * CULMINATION_PERIOD,
+		0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbolAsync(
+		VIRAL_SHEDDING_PROFILES_CONSTMEM,
+		VIRAL_SHEDDING_PROFILES_HOST,
+		sizeof(float) * NUM_PROFILES * CULMINATION_PERIOD,
+		0, cudaMemcpyHostToDevice);*/
 
+	//must synchronize later!
 	if(PROFILE_SIMULATION)
 		profiler.endFunction(-1,1);
 }
@@ -2568,26 +2581,12 @@ __global__ void kernel_countInfectedStatus(int * pandemic_status_array, int * se
 		__syncthreads();
 	}
 
-	//thread 0 stores results
-	if(tid == 0)
+	//threads 0-7 store sums, which are in the spot for tid 0
+	if(tid < 8)
 	{
-		atomicAdd(output_pandemic_counts + 0, pandemic_reduction_array[0][0]);
-		atomicAdd(output_pandemic_counts + 1, pandemic_reduction_array[0][1]);
-		atomicAdd(output_pandemic_counts + 2, pandemic_reduction_array[0][2]);
-		atomicAdd(output_pandemic_counts + 3, pandemic_reduction_array[0][3]);
-		atomicAdd(output_pandemic_counts + 4, pandemic_reduction_array[0][4]);
-		atomicAdd(output_pandemic_counts + 5, pandemic_reduction_array[0][5]);
-		atomicAdd(output_pandemic_counts + 6, pandemic_reduction_array[0][6]);
-		atomicAdd(output_pandemic_counts + 7, pandemic_reduction_array[0][7]);
+		atomicAdd(output_pandemic_counts + tid, pandemic_reduction_array[0][tid]);
 
-		atomicAdd(output_seasonal_counts + 0, seasonal_reduction_array[0][0]);
-		atomicAdd(output_seasonal_counts + 1, seasonal_reduction_array[0][1]);
-		atomicAdd(output_seasonal_counts + 2, seasonal_reduction_array[0][2]);
-		atomicAdd(output_seasonal_counts + 3, seasonal_reduction_array[0][3]);
-		atomicAdd(output_seasonal_counts + 4, seasonal_reduction_array[0][4]);
-		atomicAdd(output_seasonal_counts + 5, seasonal_reduction_array[0][5]);
-		atomicAdd(output_seasonal_counts + 6, seasonal_reduction_array[0][6]);
-		atomicAdd(output_seasonal_counts + 7, seasonal_reduction_array[0][7]);
+		atomicAdd(output_seasonal_counts + tid, seasonal_reduction_array[0][tid]);
 	}
 }
 
