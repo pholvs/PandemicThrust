@@ -42,8 +42,11 @@
 #define CHILD_DATA_ROWS 5
 #define HH_TABLE_ROWS 9
 
-const int MAX_CONTACTS_WEEKDAY = 8;
-const int MAX_CONTACTS_WEEKEND = 5;
+#define DEFINE_MAX_CONTACTS_WEEKDAY 8
+const int MAX_CONTACTS_WEEKDAY = DEFINE_MAX_CONTACTS_WEEKDAY;
+
+#define DEFINE_MAX_CONTACTS_WEEKEND 5
+const int MAX_CONTACTS_WEEKEND = DEFINE_MAX_CONTACTS_WEEKEND;
 
 #define MAX_CONTACTS_PER_DAY __max(MAX_CONTACTS_WEEKDAY, MAX_CONTACTS_WEEKEND)
 
@@ -325,7 +328,7 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 											  personId_t * errand_loc_offsets, personId_t * errand_people,
 											  int * errand_populationCount_exclusiveScan,
 											  int number_locations,
-											  personId_t * output_infector_ptr, personId_t * output_victim_ptr, kval_type_t * output_kval_ptr,
+											  personId_t * output_victim_ptr, kval_type_t * output_kval_ptr,
 											  randOffset_t myRandOffset);
 
 
@@ -339,7 +342,7 @@ __device__ void device_lookupInfectedErrand_weekend(int myPos, int hour_slot,
 													int * contacts_desired_arr, int * hour_arr, int * location_arr, 
 													int * output_contacts_desired, int * output_hour, int * output_location);
 
-__device__ void device_nullFillContact(int myIdx, int * output_infector_idx, int * output_victim_idx, int * output_kval);
+__device__ void device_nullFillContact(int * output_victim_idx, int * output_kval);
 
 
 //weekday errand assignment

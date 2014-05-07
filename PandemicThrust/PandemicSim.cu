@@ -1732,7 +1732,7 @@ __device__ kval_t device_makeContacts_weekday(
 	int * errand_infected_locs,
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	int number_locations,
-	personId_t * output_infector_arr, personId_t * output_victim_arr, kval_type_t * output_kval_arr,
+	personId_t * output_victim_arr, kval_type_t * output_kval_arr,
 	randOffset_t myRandOffset, personId_t number_people)
 
 {
@@ -1757,21 +1757,18 @@ __device__ kval_t device_makeContacts_weekday(
 		household_kval_sum += device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[0], CONTACT_TYPE_HOME,
 			NULL,	//workplace_people
-			output_infector_arr + 0,
 			output_victim_arr + 0,
 			output_kval_arr + 0);
 
 		household_kval_sum += device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[1], CONTACT_TYPE_HOME,
 			NULL,	//workplace_people
-			output_infector_arr + 1,
 			output_victim_arr + 1,
 			output_kval_arr + 1);
 
 		household_kval_sum += device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[2], CONTACT_TYPE_HOME,
 			NULL,	//workplace_people
-			output_infector_arr + 2,
 			output_victim_arr + 2,
 			output_kval_arr + 2);			
 	}
@@ -1804,7 +1801,6 @@ __device__ kval_t device_makeContacts_weekday(
 			workplace_kval_sum += device_selectRandomPersonFromLocation(
 				myIdx,loc_offset, loc_count, rand_union.i[local_contacts_made], kval_type,
 				workplace_people,
-				output_infector_arr + local_contacts_made,
 				output_victim_arr + local_contacts_made,
 				output_kval_arr + local_contacts_made);
 
@@ -1844,7 +1840,6 @@ __device__ kval_t device_makeContacts_weekday(
 				errand_kval_sum += device_selectRandomPersonFromLocation(
 					myIdx, loc_offset, loc_count, rand_union.i[contacts_made], kval_type,
 					errand_people, 
-					output_infector_arr + contacts_made,
 					output_victim_arr + contacts_made,
 					output_kval_arr + contacts_made);
 
@@ -1854,15 +1849,11 @@ __device__ kval_t device_makeContacts_weekday(
 		}
 
 		//if person has made less than max contacts, fill the end with null contacts
-		while(contacts_made < MAX_CONTACTS_WEEKDAY)
+		while(contacts_made < DEFINE_MAX_CONTACTS_WEEKDAY)
 		{
-			device_nullFillContact(myIdx,
-				output_infector_arr + contacts_made,
-				output_victim_arr + contacts_made,
-				output_kval_arr + contacts_made);
+			device_nullFillContact(	output_victim_arr + contacts_made,output_kval_arr + contacts_made);
 			contacts_made++;
 		}
-
 	}
 	kval_t kval_sum = household_kval_sum + workplace_kval_sum + errand_kval_sum;
 
@@ -1963,21 +1954,23 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 		household_kval_sum += device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[0], CONTACT_TYPE_HOME,
 			NULL, //household_people
-			output_infector_ptr + 0,
 			output_victim_ptr + 0,
 			output_kval_ptr + 0);
+		output_infector_ptr[0] = myIdx;
+
 		household_kval_sum += device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[1], CONTACT_TYPE_HOME,
 			NULL, //household_people
-			output_infector_ptr + 1,
 			output_victim_ptr + 1,
 			output_kval_ptr + 1);
+		output_infector_ptr[1] = myIdx;
+
 		household_kval_sum += device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[2], CONTACT_TYPE_HOME,
 			NULL, //household_people
-			output_infector_ptr + 2,
 			output_victim_ptr + 2,
 			output_kval_ptr + 2);
+		output_infector_ptr[2] = myIdx;
 	}
 
 	//get an errand profile between 0 and 5
@@ -2007,9 +2000,9 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 		errand_kval_sum += device_selectRandomPersonFromLocation(			//select a random person at the location
 			myIdx, loc_offset, loc_count, rand_union_32.i[0], CONTACT_TYPE_ERRAND,
 			errand_people,
-			output_infector_ptr + 3,
 			output_victim_ptr + 3,
 			output_kval_ptr + 3);
+		output_infector_ptr[3] = myIdx;
 	}
 	{
 		//do it again for the second errand contact
@@ -2025,9 +2018,9 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 		errand_kval_sum += device_selectRandomPersonFromLocation(			//select a random person at the location
 			myIdx, loc_offset, loc_count, rand_union_32.i[1], CONTACT_TYPE_ERRAND,
 			errand_people,
-			output_infector_ptr + 4,
 			output_victim_ptr + 4,
 			output_kval_ptr + 4);
+		output_infector_ptr[4] = myIdx;
 	}
 
 	kval_t kval_sum = household_kval_sum + errand_kval_sum;
@@ -2201,7 +2194,7 @@ __device__ kval_t device_selectRandomPersonFromLocation(
 	unsigned int rand_val, 
 	kval_type_t desired_contact_type, 
 	personId_t * location_people_arr,
-	personId_t * output_infector_idx_ptr, personId_t * output_victim_idx_ptr, kval_type_t * output_kval_ptr)
+	personId_t * output_victim_idx_ptr, kval_type_t * output_kval_ptr)
 {
 	//start with null data
 	int victim_idx = NULL_PERSON_INDEX;
@@ -2240,9 +2233,8 @@ __device__ kval_t device_selectRandomPersonFromLocation(
 }
 
 //write a null contact to the memory locations
-__device__ void device_nullFillContact(int myIdx, int * output_infector_idx, int * output_victim_idx, int * output_kval)
+__device__ void device_nullFillContact(int * output_victim_idx, int * output_kval)
 {
-	(*output_infector_idx) = myIdx;
 	(*output_victim_idx) = NULL_PERSON_INDEX;
 	(*output_kval) = CONTACT_TYPE_NONE;
 }
@@ -3747,3 +3739,253 @@ void PandemicSim::weekday_generateAfterschoolAndErrandDestinations()
 	if(PROFILE_SIMULATION)
 		profiler.endFunction(current_day,number_people);
 }
+
+__device__ int device_setInfectionStatus(status_t profile_to_set, day_t day_to_set, gen_t gen_to_set,
+										  status_t * output_profile, day_t * output_day, gen_t * output_gen)
+{
+	status_t val_in_mem = atomicCAS(output_profile, STATUS_SUSCEPTIBLE, profile_to_set);
+
+	if(val_in_mem != STATUS_SUSCEPTIBLE)
+		return 0;
+
+	*output_day = day_to_set;
+	*output_gen = gen_to_set;
+
+	return 1;
+}
+
+
+__device__ action_t device_doInfectionActionImmediately(personId_t victim,day_t day_to_set,
+												bool infects_pandemic, bool infects_seasonal,
+												status_t profile_p_to_set, status_t profile_s_to_set,
+												gen_t gen_p_to_set, gen_t gen_s_to_set,
+												status_t * people_status_pandemic, status_t * people_status_seasonal,
+												day_t * people_days_pandemic, day_t * people_days_seasonal,
+												gen_t * people_gens_pandemic, gen_t * people_gens_seasonal)
+{
+	int success_pandemic = ACTION_INFECT_NONE;
+	if(infects_pandemic)
+	{
+		//returns 1 if action was successful, 0 otherwise
+		success_pandemic = device_setInfectionStatus(profile_p_to_set, day_to_set, gen_p_to_set,
+			people_status_pandemic + victim, people_days_pandemic + victim, people_gens_pandemic + victim);
+		success_pandemic *= ACTION_INFECT_PANDEMIC;  //if successful, success_pandemic contains ACTION_INFECT_SEASONAL, otherwise ACTION_INFECT_NONE
+	}
+
+	int success_seasonal = ACTION_INFECT_NONE;
+	if(infects_seasonal)
+	{
+		success_seasonal = device_setInfectionStatus(profile_s_to_set,day_to_set, gen_s_to_set,
+			people_status_seasonal + victim, people_days_seasonal + victim, people_gens_seasonal + victim);
+		success_seasonal *= ACTION_INFECT_SEASONAL;
+	}
+
+	action_t result = success_pandemic + success_seasonal;
+
+	return result;
+}
+
+
+__device__ void device_doContactsToActions_immediately(
+	personId_t myIdx, kval_t kval_sum,
+	personId_t * contact_victims_arr, kval_type_t *contact_type_arr, int contacts_per_infector,
+	status_t * people_status_p_arr, status_t * people_status_s_arr,
+	day_t * people_days_pandemic, day_t * people_days_seasonal,
+	gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
+	action_t * output_action_arr,
+	float * rand_arr_1, float * rand_arr_2, float * rand_arr_3, float * rand_arr_4,
+	day_t current_day,
+	randOffset_t myRandOffset)
+{
+	threefry2x64_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c[4];
+		unsigned int i[16];
+	} rand_union;
+
+	//		if(kval_sum == 0)
+	//			continue;
+	status_t status_p = people_status_p_arr[myIdx];
+	status_t status_s = people_status_s_arr[myIdx];
+
+	float inf_prob_p = -1.f;
+	float inf_prob_s = -1.f;
+
+	gen_t gen_p = GENERATION_NOT_INFECTED;
+	gen_t gen_s = GENERATION_NOT_INFECTED;
+
+	//int profile_day_p = -1;
+	if(status_p >= 0)
+	{
+		int profile_day_p = current_day - people_days_pandemic[myIdx];
+
+		//refinement: when doing contacts_to_actions live from shared memory, status_p may be changed out from
+		//underneath us.  In this case, day_p will be equal to tomorrow, so the profile_day will be -1
+		//thus, only calculate infection prob if the profile_day is positive and within the bounds of the culmination period
+		if(profile_day_p >= 0 && profile_day_p < CULMINATION_PERIOD)
+		{
+			inf_prob_p = device_calculateInfectionProbability(status_p,profile_day_p, STRAIN_PANDEMIC,kval_sum);
+			gen_p = people_gens_pandemic[myIdx];
+		}
+	}
+
+	//int profile_day_s = -1;
+	if(status_s >= 0)
+	{
+		int profile_day_s = current_day - people_days_seasonal[myIdx];
+
+		if(profile_day_s >= 0 && profile_day_s < CULMINATION_PERIOD)
+		{
+			inf_prob_s = device_calculateInfectionProbability(status_s,profile_day_s, STRAIN_SEASONAL,kval_sum);
+			gen_s = people_gens_seasonal[myIdx];
+		}
+	}
+
+
+	threefry2x64_ctr_t tf_ctr_1 = {{myRandOffset, myRandOffset}};
+	rand_union.c[0] = threefry2x64(tf_ctr_1, tf_k);
+	threefry2x64_ctr_t tf_ctr_2 = {{myRandOffset + 1, myRandOffset + 1}};
+	rand_union.c[1] = threefry2x64(tf_ctr_2, tf_k);
+	threefry2x64_ctr_t tf_ctr_3 = {{myRandOffset + 2, myRandOffset + 2}};
+	rand_union.c[2] = threefry2x64(tf_ctr_3, tf_k);
+	threefry2x64_ctr_t tf_ctr_4 = {{myRandOffset + 3, myRandOffset + 3}};
+	rand_union.c[3] = threefry2x64(tf_ctr_4, tf_k);
+
+	int rand_vals_used = 0;
+	for(int contacts_processed = 0; contacts_processed < contacts_per_infector; contacts_processed++)
+	{
+		int contact_victim = contact_victims_arr[contacts_processed];
+		int contact_type = contact_type_arr[contacts_processed];
+
+		kval_t contact_kval = KVAL_LOOKUP_DEVICE[contact_type];
+
+		float y_p = (float) rand_union.i[rand_vals_used++] / UNSIGNED_MAX;
+		bool infects_p = y_p < (float) (inf_prob_p * contact_kval);
+
+		float y_s = (float) rand_union.i[rand_vals_used++] / UNSIGNED_MAX;
+		bool infects_s = y_s < (float) (inf_prob_s * contact_kval);
+
+		//function handles parsing bools into an action and checking that victim is susceptible
+		action_t result = device_doInfectionActionImmediately(
+			contact_victim, current_day + 1,
+			infects_p,infects_s,
+			STATUS_INFECTED, STATUS_INFECTED,
+			gen_p, gen_s,
+			people_status_p_arr,people_status_s_arr,
+			people_days_pandemic,people_days_seasonal,
+			people_gens_pandemic,people_gens_seasonal);
+
+		if(SIM_VALIDATION)
+		{
+			//if result was successful, copy out the action that resulted
+			if(result != ACTION_INFECT_NONE)
+				output_action_arr[contacts_processed] = result;
+
+			rand_arr_1[contacts_processed] = y_p;
+			rand_arr_2[contacts_processed] = (float) (inf_prob_p * contact_kval);
+			rand_arr_3[contacts_processed] = y_s;
+			rand_arr_4[contacts_processed] = (float) (inf_prob_s * contact_kval);
+		}
+	}
+
+}
+
+
+
+__global__ void kernel_weekday_sharedMem(int num_infected, int * infected_indexes, int * people_age,
+										   int * household_lookup, personId_t * household_offsets,// personId_t * household_people,
+										   int * workplace_max_contacts, int * workplace_lookup, 
+										   personId_t * workplace_offsets, personId_t * workplace_people,
+										   errand_contacts_profile_t * errand_contacts_profile_arr, int * errand_infected_locs,
+										   personId_t * errand_loc_offsets, personId_t * errand_people,
+										   int number_locations, 
+										   personId_t * output_infector_arr, personId_t * output_victim_arr, kval_type_t * output_kval_arr,
+										   status_t * people_status_p_arr, status_t * people_status_s_arr,
+										   day_t * people_days_pandemic, day_t * people_days_seasonal,
+										   gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
+										   kval_t * output_kval_sum_arr, 
+										   float * float_rand1, float * float_rand2,
+										   float * float_rand3, float * float_rand4,
+										   day_t current_day,
+										   randOffset_t rand_offset, personId_t number_people)
+
+{
+	int contactsPerBlock = blockDim.x * DEFINE_MAX_CONTACTS_WEEKDAY;
+	
+	extern __shared__ int sharedMem[];
+	personId_t * victim_array = (personId_t *) sharedMem;
+	kval_type_t * contact_kval_array = (kval_type_t *) &victim_array[contactsPerBlock];
+//	threefry2x64_ctr_t * shared_rand_ctrs = (threefry2x64_ctr_t *) &contact_kval_array[contactsPerBlock];
+
+	personId_t * myVictimArray = victim_array + (threadIdx.x * DEFINE_MAX_CONTACTS_WEEKDAY);
+	kval_type_t * myKvalArray = contact_kval_array + (threadIdx.x * DEFINE_MAX_CONTACTS_WEEKDAY);
+
+//	threefry2x64_ctr_t * mySharedRandCtr = shared_rand_ctrs + (threadIdx.x / 4);
+//	int * mySharedInt = ((int *) mySharedRandCtr) + (threadIdx.x % 4);
+
+	const int rand_counts_consumed = 7;
+
+
+	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
+	{
+		randOffset_t myRandOffset = rand_offset + (myPos * rand_counts_consumed);
+
+		//starter code for in-kernel errand profile assignment
+
+		/*if(threadIdx.x % 4 == 0)
+		{
+			*mySharedRandCtr = threefry2x64(tf_ctr, tf_k);
+		}
+		__syncthreads();*/
+
+
+		myRandOffset++;
+
+		int output_offset_base = DEFINE_MAX_CONTACTS_WEEKDAY * myPos;
+
+		personId_t myIdx = infected_indexes[myPos];
+
+
+		errand_contacts_profile_t errand_contacts_profile = errand_contacts_profile_arr[myPos];
+
+		kval_t kval_sum = device_makeContacts_weekday(
+			myIdx, errand_contacts_profile, myPos,
+			household_lookup, household_offsets,// household_people,
+			workplace_max_contacts, workplace_lookup, 
+			workplace_offsets, workplace_people,
+			errand_infected_locs,
+			errand_loc_offsets, errand_people,
+			number_locations,
+			myVictimArray, myKvalArray,
+			myRandOffset, number_people);
+
+		myRandOffset += 2;
+
+		//convert the contacts to actions immediately
+		device_doContactsToActions_immediately(
+			myIdx, kval_sum,
+			myVictimArray,myKvalArray, DEFINE_MAX_CONTACTS_WEEKDAY,
+			people_status_p_arr,people_status_s_arr,
+			people_days_pandemic,people_days_seasonal,
+			people_gens_pandemic,people_gens_seasonal,
+			output_action_arr + output_offset_base,
+			float_rand1 + output_offset_base, float_rand2 + output_offset_base,
+			float_rand3 + output_offset_base, float_rand4 + output_offset_base,
+			current_day, myRandOffset);
+
+		if(SIM_VALIDATION)
+		{
+			output_kval_sum_arr[myPos] = kval_sum;
+
+			for(int c = 0; c < DEFINE_MAX_CONTACTS_WEEKDAY; c++)
+			{
+				int output_offset = output_offset_base + c;
+
+				output_infector_arr[output_offset] = myIdx;
+				output_victim_arr[output_offset] = myVictimArray[c];
+				output_kval_arr[output_offset] = myKvalArray[c];
+			}
+		}
+	}
+}
+
