@@ -24,7 +24,6 @@ int h_people_status_data_freshness = -2;
 h_vec h_contacts_infector;
 h_vec h_contacts_victim;
 h_vec h_contacts_kval;
-h_vec h_infected_kval_sums;
 int h_contacts_freshness = -2;
 
 h_vec h_action_types;
@@ -108,7 +107,7 @@ void PandemicSim::debug_sizeHostArrays()
 	h_contacts_kval.resize(daily_contact_kval_types.size());
 
 	h_action_types.resize(daily_action_type.size());
-	h_infected_kval_sums.resize(infected_daily_kval_sum.size());
+
 	h_actions_rand1.resize(debug_contactsToActions_float1.size());
 	h_actions_rand2.resize(debug_contactsToActions_float2.size());
 	h_actions_rand3.resize(debug_contactsToActions_float3.size());
@@ -883,7 +882,6 @@ void PandemicSim::debug_freshenContacts()
 		thrust::copy_n(daily_contact_infectors.begin(), num_contacts, h_contacts_infector.begin());
 		thrust::copy_n(daily_contact_victims.begin(), num_contacts, h_contacts_victim.begin());
 		thrust::copy_n(daily_contact_kval_types.begin(), num_contacts, h_contacts_kval.begin());
-		thrust::copy_n(infected_daily_kval_sum.begin(), infected_count, h_infected_kval_sums.begin());
 
 		h_contacts_freshness = current_day;
 	}
@@ -954,9 +952,6 @@ void PandemicSim::debug_validateActions()
 			//test that all floats are 0 <= x <= 1
 			debug_assert(y_p >= 0.f && y_p <= 1.0f, "y_p out of valid range, person", infector);
 			debug_assert(y_s >= 0.f && y_s <= 1.0f, "y_s out of valid range, person", infector);
-			
-			if(infector == 10643)
-				printf("");
 
 			if(infector_status_p >= 0)
 			{
@@ -981,7 +976,7 @@ void PandemicSim::debug_validateActions()
 			bool infects_p = y_p < inf_prob_p;
 			bool infects_s = y_s < inf_prob_s;
 
-			bool victim_susceptible_pandemic = h_people_status_pandemic[victim] == STATUS_SUSCEPTIBLE;
+			/*bool victim_susceptible_pandemic = h_people_status_pandemic[victim] == STATUS_SUSCEPTIBLE;
 			bool victim_susceptible_seasonal = h_people_status_seasonal[victim] == STATUS_SUSCEPTIBLE;
 
 			if(action_type == ACTION_INFECT_NONE)
@@ -1007,7 +1002,7 @@ void PandemicSim::debug_validateActions()
 
 			}
 			else
-				debug_print("invalid action code");
+				debug_print("invalid action code");*/
 
 			if(log_actions)
 				fprintf(fActions, "%d,%d,%d,%d,%d,%s\n",

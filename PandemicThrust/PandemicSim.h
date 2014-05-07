@@ -16,21 +16,20 @@
 
 #define COUNTING_GRID_BLOCKS 32
 #define COUNTING_GRID_THREADS 256
-#define CONSOLE_OUTPUT 1
+#define CONSOLE_OUTPUT 0
 #define TIMING_BATCH_MODE 0
 #define OUTPUT_FILES_IN_PARENTDIR 0
 #define POLL_MEMORY_USAGE 1
-#define debug_null_fill_daily_arrays 1
 
 #define DEBUG_SYNCHRONIZE_NEAR_KERNELS 0
 
 //sim_validation must be 1 to log things
-#define SIM_VALIDATION 1
+#define SIM_VALIDATION 0
 
 #define log_contacts 1
 #define log_infected_info 0
 #define log_location_info 0
-#define log_actions 0
+#define log_actions 1
 #define log_actions_filtered 0
 #define log_people_info 0
 
@@ -54,6 +53,15 @@ const int MAX_CONTACTS_WEEKEND = DEFINE_MAX_CONTACTS_WEEKEND;
 
 //typedef unsigned long long randOffset_t;
 
+//currently unused
+struct personStatusStruct{
+	status_t status_pandemic;
+	day_t day_pandemic;
+	gen_t gen_pandemic;
+	status_t status_seasonal;
+	day_t day_seasonal;
+	gen_t gen_seasonal;
+};
 
 
 class PandemicSim
@@ -140,8 +148,6 @@ public:
 	int infected_count;	
 	thrust::device_vector<personId_t> infected_indexes;
 	int * infected_indexes_ptr;
-	thrust::device_vector<kval_t> infected_daily_kval_sum;
-	kval_t * infected_daily_kval_sum_ptr;
 
 	int daily_contacts;
 	thrust::device_vector<personId_t> daily_contact_infectors;
@@ -373,7 +379,10 @@ __device__ void device_copyInfectedErrandLocs_weekend(int * input_hours_ptr, int
 
 
 //output metrics
-__global__ void kernel_countInfectedStatus(int * pandemic_status_array, int * seasonal_status_array, int num_people, int * output_pandemic_counts, int * output_seasonal_counts);
+__global__ void kernel_countInfectedStatus(
+	status_t * pandemic_status_array, status_t * seasonal_status_array, 
+	int num_people,
+	int * output_pandemic_counts, int * output_seasonal_counts);
 
 //contacts_to_action
 __global__ void kernel_contactsToActions(personId_t * infected_idx_arr, kval_t * infected_kval_sum_arr, int infected_count,
@@ -439,3 +448,48 @@ extern const int PROFILE_SIMULATION;
 extern int WORKPLACE_TYPE_OFFSET_HOST[NUM_BUSINESS_TYPES];
 extern int WORKPLACE_TYPE_COUNT_HOST[NUM_BUSINESS_TYPES];
 extern int CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[CHILD_DATA_ROWS];
+
+
+//sharedmem contact methods
+
+
+
+
+__global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
+										 int * household_lookup, personId_t * household_offsets,// personId_t * household_people,
+										 int * workplace_max_contacts, int * workplace_lookup, 
+										 personId_t * workplace_offsets, personId_t * workplace_people,
+										 errand_contacts_profile_t * errand_contacts_profile_arr, int * errand_infected_locs,
+										 personId_t * errand_loc_offsets, personId_t * errand_people,
+										 int number_locations, 
+										 personId_t * output_infector_arr, personId_t * output_victim_arr, kval_type_t * output_kval_arr,
+										 action_t * output_action_arr,
+										 status_t * people_status_p_arr, status_t * people_status_s_arr,
+										 day_t * people_days_pandemic, day_t * people_days_seasonal,
+										 gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
+										 float * float_rand1, float * float_rand2,
+										 float * float_rand3, float * float_rand4,
+										 day_t current_day,
+										 randOffset_t rand_offset, personId_t number_people);
+
+__device__ int device_setInfectionStatus(status_t profile_to_set, day_t day_to_set, gen_t gen_to_set,
+										 status_t * output_profile, day_t * output_day, gen_t * output_gen);
+
+__device__ action_t device_doInfectionActionImmediately(personId_t victim,day_t day_to_set,
+														bool infects_pandemic, bool infects_seasonal,
+														status_t profile_p_to_set, status_t profile_s_to_set,
+														gen_t gen_p_to_set, gen_t gen_s_to_set,
+														status_t * people_status_pandemic, status_t * people_status_seasonal,
+														day_t * people_days_pandemic, day_t * people_days_seasonal,
+														gen_t * people_gens_pandemic, gen_t * people_gens_seasonal);
+
+__device__ void device_doContactsToActions_immediately(
+	personId_t myIdx, kval_t kval_sum,
+	personId_t * contact_victims_arr, kval_type_t *contact_type_arr, int contacts_per_infector,
+	status_t * people_status_p_arr, status_t * people_status_s_arr,
+	day_t * people_days_pandemic, day_t * people_days_seasonal,
+	gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
+	action_t * output_action_arr,
+	float * rand_arr_1, float * rand_arr_2, float * rand_arr_3, float * rand_arr_4,
+	day_t current_day,
+	randOffset_t myRandOffset);

@@ -891,13 +891,18 @@ void PandemicSim::runToCompletion()
 		if(debug_log_function_calls)
 			debug_print("beginning day...");
 
-		if(debug_null_fill_daily_arrays)
+		if(SIM_VALIDATION)
 			debug_nullFillDailyArrays();
 
 		daily_actions = 0;
 
 		//begin asynchronous count of the infected stats
-		daily_countInfectedStats();			
+		daily_countInfectedStats();
+
+		//synchronize the secondary stream - this ensures that the countInfected kernel has finished
+		//and sent its data, and that the actions array has been nulled
+		cudaStreamSynchronize(stream_secondary);
+		daily_writeInfectedStats();
 
 		//build infected index array
 		daily_buildInfectedArray_global();
@@ -907,10 +912,11 @@ void PandemicSim::runToCompletion()
 		if(infected_count == 0)
 			break;
 
-		daily_clearActionsArray(); //must occur AFTER we have counted infected
 
 		if(SIM_VALIDATION)
 		{
+			daily_clearActionsArray(); //must occur AFTER we have counted infected
+
 			debug_validateInfectionStatus();
 
 			fprintf(fDebug, "\n\n---------------------\nday %d\ninfected: %d\n---------------------\n\n", current_day, infected_count);
@@ -919,7 +925,7 @@ void PandemicSim::runToCompletion()
 
 		if(CONSOLE_OUTPUT)
 		{
-			printf("Day %d:\tinfected: %5d\n", current_day + 1, infected_count);
+			printf("Day %3d:\tinfected: %5d\n", current_day + 1, infected_count);
 		}
 
 		if(POLL_MEMORY_USAGE)
@@ -941,6 +947,8 @@ void PandemicSim::runToCompletion()
 		if(0)
 			fflush(f_outputInfectedStats);
 
+		cudaDeviceSynchronize();
+
 		//if we're using the profiler, flush each day in case of crash
 		if(PROFILE_SIMULATION)
 		{
@@ -948,6 +956,7 @@ void PandemicSim::runToCompletion()
 		}
 	}
 
+	cudaDeviceSynchronize();
 	final_countReproduction();
 
 	if(PROFILE_SIMULATION)
@@ -1032,19 +1041,6 @@ void PandemicSim::dailyUpdate()
 	if(debug_log_function_calls)
 		debug_print("beginning daily update");
 
-	//synchronize the secondary stream - this ensures that the countInfected kernel has finished
-	//and sent its data, and that the actions array has been nulled
-	cudaStreamSynchronize(stream_secondary);
-	daily_writeInfectedStats();
-
-	//process contacts into actions
-	daily_contactsToActions_new();
-
-	//filter invalid actions - not susceptible, duplicate, etc
-	daily_filterActions_new();
-
-	//do infection actions
-	daily_doInfectionActions();
 
 	//recover infected who have reached culmination
 	daily_recoverInfected_new();
@@ -1091,16 +1087,8 @@ void PandemicSim::setup_sizeGlobalArrays()
 
 	//assume that worst-case everyone gets infected
 	infected_indexes.resize(number_people);
-	infected_daily_kval_sum.resize(number_people);
 
 	int expected_max_contacts = number_people * MAX_CONTACTS_PER_DAY;
-
-	//resize contact arrays
-	if(SIM_VALIDATION)
-		daily_contact_infectors.resize(expected_max_contacts);
-	daily_contact_victims.resize(expected_max_contacts);
-	daily_contact_kval_types.resize(expected_max_contacts);
-	daily_action_type.resize(expected_max_contacts);
 
 	//weekend errands arrays tend to be very large, so pre-allocate them
 	int num_weekend_errands = number_people * NUM_WEEKEND_ERRANDS;
@@ -1120,6 +1108,11 @@ void PandemicSim::setup_sizeGlobalArrays()
 
 	if(SIM_VALIDATION)
 	{
+		daily_contact_infectors.resize(expected_max_contacts);
+		daily_contact_victims.resize(expected_max_contacts);
+		daily_contact_kval_types.resize(expected_max_contacts);
+		daily_action_type.resize(expected_max_contacts);
+
 		debug_contactsToActions_float1.resize(expected_max_contacts);
 		debug_contactsToActions_float2.resize(expected_max_contacts);
 		debug_contactsToActions_float3.resize(expected_max_contacts);
@@ -1144,7 +1137,6 @@ void PandemicSim::debug_nullFillDailyArrays()
 	thrust::fill(daily_contact_infectors.begin(), daily_contact_infectors.end(), -1);
 	thrust::fill(daily_contact_victims.begin(), daily_contact_victims.end(), -1);
 	thrust::fill(daily_contact_kval_types.begin(), daily_contact_kval_types.end(), CONTACT_TYPE_NONE);
-	thrust::fill(infected_daily_kval_sum.begin(), infected_daily_kval_sum.end(), 0);
 
 	thrust::fill(daily_action_type.begin(), daily_action_type.end(), ACTION_INFECT_NONE);
 
@@ -1272,28 +1264,36 @@ void PandemicSim::doWeekday_wholeDay()
 	int threads = cuda_makeWeekdayContactsKernel_threads;
 
 	//get the amount of shared memory needed for each block
-	/*size_t smem_size = sizeof(personId_t) + sizeof(personId_t) + sizeof(kval_type_t);
-	smem_size *= MAX_CONTACTS_WEEKDAY;
-	smem_size *= threads;*/
+	size_t smem_size = sizeof(personId_t) + sizeof(kval_type_t);
+	smem_size *= DEFINE_MAX_CONTACTS_WEEKDAY;
+	smem_size *= threads;
 
-	size_t smem_size = 0;
+	//size_t smem_size = 0;
 
-	kernel_makeContacts_weekday<<<blocks,threads,smem_size>>>(
-		infected_count, infected_indexes_ptr, people_ages_ptr,
-		people_households_ptr, household_offsets_ptr, // household_people_ptr,
-		workplace_max_contacts_ptr, people_workplaces_ptr, 
-		workplace_offsets_ptr, workplace_people_ptr,
+	kernel_weekday_sharedMem<<<blocks,threads,smem_size>>> (infected_count,
+		infected_indexes_ptr,people_ages_ptr,
+		people_households_ptr,household_offsets_ptr,
+		workplace_max_contacts_ptr,people_workplaces_ptr,
+		workplace_offsets_ptr,workplace_people_ptr,
 		errand_infected_ContactsDesired_ptr, errand_infected_locations_ptr,
-		errand_locationOffsets_multiHour_ptr,errand_people_table_ptr,
+		errand_locationOffsets_multiHour_ptr, errand_people_table_ptr,
 		number_workplaces,
-		daily_contact_infectors_ptr, daily_contact_victims_ptr, daily_contact_kval_types_ptr,
-		infected_daily_kval_sum_ptr, rand_offset, number_people);
+		daily_contact_infectors_ptr, daily_contact_victims_ptr,
+		daily_contact_kval_types_ptr, daily_action_type_ptr,
+		people_status_pandemic_ptr,people_status_seasonal_ptr,
+		people_days_pandemic_ptr,people_days_seasonal_ptr,
+		people_gens_pandemic_ptr,people_gens_seasonal_ptr,
+		debug_contactsToActions_float1_ptr, debug_contactsToActions_float2_ptr,
+		debug_contactsToActions_float3_ptr, debug_contactsToActions_float4_ptr,
+		current_day,
+		rand_offset, number_people);
 
 	if(TIMING_BATCH_MODE == 0)
 	{
-		const int rand_counts_consumed = 2;
+		const int rand_counts_consumed = 6;
 		rand_offset += (rand_counts_consumed * infected_count);
 	}
+
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
 
@@ -1372,14 +1372,14 @@ void PandemicSim::doWeekend_wholeDay()
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
 
-	kernel_makeContacts_weekend<<<cuda_makeWeekendContactsKernel_blocks,cuda_makeWeekendContactsKernel_threads>>>(
+	/*kernel_makeContacts_weekend<<<cuda_makeWeekendContactsKernel_blocks,cuda_makeWeekendContactsKernel_threads>>>(
 		infected_count, infected_indexes_ptr,
 		people_households_ptr, household_offsets_ptr, //household_people_ptr,
 		errand_infected_weekendHours_ptr, errand_infected_locations_ptr, //errand_infected_ContactsDesired_ptr,
 		errand_locationOffsets_multiHour_ptr ,errand_people_table_ptr, errand_hourOffsets_weekend_ptr,
 		number_workplaces,
 		daily_contact_infectors_ptr, daily_contact_victims_ptr, daily_contact_kval_types_ptr,
-		infected_daily_kval_sum_ptr, rand_offset);
+		infected_daily_kval_sum_ptr, rand_offset);*/
 
 	if(TIMING_BATCH_MODE == 0)
 	{
@@ -2425,7 +2425,10 @@ __device__ void device_doAllInfectedSetup_weekend(unsigned int * rand_val, int m
 }
 
 
-__global__ void kernel_countInfectedStatus(int * pandemic_status_array, int * seasonal_status_array, int num_people, int * output_pandemic_counts, int * output_seasonal_counts)
+__global__ void kernel_countInfectedStatus(
+	status_t * pandemic_status_array, status_t * seasonal_status_array, 
+	int num_people, 
+	int * output_pandemic_counts, int * output_seasonal_counts)
 {
 	int tid = threadIdx.x;
 	__shared__ int pandemic_reduction_array[COUNTING_GRID_THREADS][8];
@@ -3174,7 +3177,7 @@ void PandemicSim::daily_contactsToActions_new()
 	int contacts_per_infector = is_weekend() ? MAX_CONTACTS_WEEKEND : MAX_CONTACTS_WEEKDAY;
 	int total_contacts = contacts_per_infector * infected_count;
 
-	kernel_contactsToActions<<<cuda_contactsToActionsKernel_blocks,cuda_contactsToActionsKernel_threads>>>(
+	/*kernel_contactsToActions<<<cuda_contactsToActionsKernel_blocks,cuda_contactsToActionsKernel_threads>>>(
 		infected_indexes_ptr, infected_daily_kval_sum_ptr, infected_count,
 		daily_contact_victims_ptr, daily_contact_kval_types_ptr, contacts_per_infector,
 		people_days_pandemic_ptr, people_days_seasonal_ptr,
@@ -3182,7 +3185,8 @@ void PandemicSim::daily_contactsToActions_new()
 		daily_action_type_ptr,
 		debug_contactsToActions_float1_ptr, debug_contactsToActions_float2_ptr,
 		debug_contactsToActions_float3_ptr, debug_contactsToActions_float4_ptr,
-		current_day, rand_offset);
+		current_day, rand_offset);*/
+
 	if(TIMING_BATCH_MODE == 0)
 	{
 		int rand_counts_consumed = 4 * infected_count;
@@ -3359,11 +3363,6 @@ void PandemicSim::setup_fetchVectorPtrs()
 	people_gens_seasonal_ptr = thrust::raw_pointer_cast(people_gens_seasonal.data());
 
 	infected_indexes_ptr = thrust::raw_pointer_cast(infected_indexes.data());
-	infected_daily_kval_sum_ptr = thrust::raw_pointer_cast(infected_daily_kval_sum.data());
-
-	daily_contact_victims_ptr = thrust::raw_pointer_cast(daily_contact_victims.data());
-	daily_contact_kval_types_ptr = thrust::raw_pointer_cast(daily_contact_kval_types.data());
-	daily_action_type_ptr = thrust::raw_pointer_cast(daily_action_type.data());
 
 	workplace_offsets_ptr = thrust::raw_pointer_cast(workplace_offsets.data());
 	workplace_people_ptr = thrust::raw_pointer_cast(workplace_people.data());
@@ -3387,6 +3386,9 @@ void PandemicSim::setup_fetchVectorPtrs()
 	if(SIM_VALIDATION)
 	{
 		daily_contact_infectors_ptr = thrust::raw_pointer_cast(daily_contact_infectors.data());
+		daily_contact_victims_ptr = thrust::raw_pointer_cast(daily_contact_victims.data());
+		daily_contact_kval_types_ptr = thrust::raw_pointer_cast(daily_contact_kval_types.data());
+		daily_action_type_ptr = thrust::raw_pointer_cast(daily_action_type.data());
 
 		debug_contactsToActions_float1_ptr = thrust::raw_pointer_cast(debug_contactsToActions_float1.data());
 		debug_contactsToActions_float2_ptr = thrust::raw_pointer_cast(debug_contactsToActions_float2.data());
@@ -3396,6 +3398,9 @@ void PandemicSim::setup_fetchVectorPtrs()
 	else
 	{
 		daily_contact_infectors_ptr = NULL;
+		daily_contact_victims_ptr = NULL;
+		daily_contact_kval_types_ptr = NULL;
+		daily_action_type_ptr = NULL;
 
 		debug_contactsToActions_float1_ptr = NULL;
 		debug_contactsToActions_float2_ptr = NULL;
@@ -3412,7 +3417,7 @@ void PandemicSim::setup_fetchVectorPtrs()
 void PandemicSim::daily_clearActionsArray()
 {
 	int size_to_clear = is_weekend() ? MAX_CONTACTS_WEEKEND * infected_count : MAX_CONTACTS_WEEKDAY * infected_count;
-	cudaMemsetAsync(daily_action_type_ptr, 0, sizeof(int) * size_to_clear,stream_secondary);
+	cudaMemset(daily_action_type_ptr, 0, sizeof(action_t) * size_to_clear);
 }
 
 
@@ -3429,7 +3434,7 @@ void PandemicSim::daily_countInfectedStats()
 	///	kernel_countInfectedStatus<<<COUNTING_GRID_BLOCKS, COUNTING_GRID_THREADS,smemsize, stream_countInfectedStatus>>>(
 	kernel_countInfectedStatus<<<COUNTING_GRID_BLOCKS, COUNTING_GRID_THREADS, dynamic_smemsize, stream_secondary>>>(
 		people_status_pandemic_ptr, people_status_seasonal_ptr, 
-		number_people, 
+		number_people,
 		pandemic_counts_ptr, seasonal_counts_ptr);
 
 	cudaMemcpyAsync(&status_counts_today, pandemic_counts_ptr,sizeof(int) * 16,cudaMemcpyDeviceToHost,stream_secondary);
@@ -3794,8 +3799,8 @@ __device__ void device_doContactsToActions_immediately(
 	float inf_prob_p = -1.f;
 	float inf_prob_s = -1.f;
 
-	gen_t gen_p = GENERATION_NOT_INFECTED;
-	gen_t gen_s = GENERATION_NOT_INFECTED;
+	gen_t gen_p_to_set = GENERATION_NOT_INFECTED;
+	gen_t gen_s_to_set = GENERATION_NOT_INFECTED;
 
 	//int profile_day_p = -1;
 	if(status_p >= 0)
@@ -3803,12 +3808,11 @@ __device__ void device_doContactsToActions_immediately(
 		int profile_day_p = current_day - people_days_pandemic[myIdx];
 
 		//refinement: when doing contacts_to_actions live from shared memory, status_p may be changed out from
-		//underneath us.  In this case, day_p will be equal to tomorrow, so the profile_day will be -1
-		//thus, only calculate infection prob if the profile_day is positive and within the bounds of the culmination period
+		//underneath us.  In this case, day_p may be in an inconsistent state.  Check that it is within bounds
 		if(profile_day_p >= 0 && profile_day_p < CULMINATION_PERIOD)
 		{
 			inf_prob_p = device_calculateInfectionProbability(status_p,profile_day_p, STRAIN_PANDEMIC,kval_sum);
-			gen_p = people_gens_pandemic[myIdx];
+			gen_p_to_set = people_gens_pandemic[myIdx] + 1;
 		}
 	}
 
@@ -3820,7 +3824,7 @@ __device__ void device_doContactsToActions_immediately(
 		if(profile_day_s >= 0 && profile_day_s < CULMINATION_PERIOD)
 		{
 			inf_prob_s = device_calculateInfectionProbability(status_s,profile_day_s, STRAIN_SEASONAL,kval_sum);
-			gen_s = people_gens_seasonal[myIdx];
+			gen_s_to_set = people_gens_seasonal[myIdx] + 1;
 		}
 	}
 
@@ -3853,7 +3857,7 @@ __device__ void device_doContactsToActions_immediately(
 			contact_victim, current_day + 1,
 			infects_p,infects_s,
 			STATUS_INFECTED, STATUS_INFECTED,
-			gen_p, gen_s,
+			gen_p_to_set, gen_s_to_set,
 			people_status_p_arr,people_status_s_arr,
 			people_days_pandemic,people_days_seasonal,
 			people_gens_pandemic,people_gens_seasonal);
@@ -3875,7 +3879,7 @@ __device__ void device_doContactsToActions_immediately(
 
 
 
-__global__ void kernel_weekday_sharedMem(int num_infected, int * infected_indexes, int * people_age,
+__global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
 										   int * household_lookup, personId_t * household_offsets,// personId_t * household_people,
 										   int * workplace_max_contacts, int * workplace_lookup, 
 										   personId_t * workplace_offsets, personId_t * workplace_people,
@@ -3887,7 +3891,6 @@ __global__ void kernel_weekday_sharedMem(int num_infected, int * infected_indexe
 										   status_t * people_status_p_arr, status_t * people_status_s_arr,
 										   day_t * people_days_pandemic, day_t * people_days_seasonal,
 										   gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
-										   kval_t * output_kval_sum_arr, 
 										   float * float_rand1, float * float_rand2,
 										   float * float_rand3, float * float_rand4,
 										   day_t current_day,
@@ -3907,7 +3910,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, int * infected_indexe
 //	threefry2x64_ctr_t * mySharedRandCtr = shared_rand_ctrs + (threadIdx.x / 4);
 //	int * mySharedInt = ((int *) mySharedRandCtr) + (threadIdx.x % 4);
 
-	const int rand_counts_consumed = 7;
+	const int rand_counts_consumed = 6;
 
 
 	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
@@ -3923,13 +3926,11 @@ __global__ void kernel_weekday_sharedMem(int num_infected, int * infected_indexe
 		__syncthreads();*/
 
 
-		myRandOffset++;
+		//myRandOffset++;
 
 		int output_offset_base = DEFINE_MAX_CONTACTS_WEEKDAY * myPos;
 
 		personId_t myIdx = infected_indexes[myPos];
-
-
 		errand_contacts_profile_t errand_contacts_profile = errand_contacts_profile_arr[myPos];
 
 		kval_t kval_sum = device_makeContacts_weekday(
@@ -3943,6 +3944,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, int * infected_indexe
 			myVictimArray, myKvalArray,
 			myRandOffset, number_people);
 
+		//makeContacts consumes 2 counts
 		myRandOffset += 2;
 
 		//convert the contacts to actions immediately
@@ -3956,11 +3958,10 @@ __global__ void kernel_weekday_sharedMem(int num_infected, int * infected_indexe
 			float_rand1 + output_offset_base, float_rand2 + output_offset_base,
 			float_rand3 + output_offset_base, float_rand4 + output_offset_base,
 			current_day, myRandOffset);
+		//consumes 4 counts
 
 		if(SIM_VALIDATION)
 		{
-			output_kval_sum_arr[myPos] = kval_sum;
-
 			for(int c = 0; c < DEFINE_MAX_CONTACTS_WEEKDAY; c++)
 			{
 				int output_offset = output_offset_base + c;
