@@ -74,7 +74,6 @@ void PandemicSim::debug_copyFixedData()
 	thrust::copy_n(workplace_max_contacts.begin(), number_workplaces, h_workplace_max_contacts.begin());
 
 	thrust::copy_n(household_offsets.begin(), number_households + 1, h_household_offsets.begin());
-	thrust::copy_n(household_people.begin(), number_people, h_household_people.begin());
 
 	if(PROFILE_SIMULATION)
 		profiler.endFunction(current_day, number_people);
@@ -103,7 +102,6 @@ void PandemicSim::debug_sizeHostArrays()
 	h_workplace_max_contacts.resize(workplace_max_contacts.size());
 
 	h_household_offsets.resize(household_offsets.size());
-	h_household_people.resize(household_people.size());
 
 	h_contacts_infector.resize(daily_contact_infectors.size());
 	h_contacts_victim.resize(daily_contact_victims.size());
@@ -719,16 +717,8 @@ void PandemicSim::debug_validatePeopleSetup()
 	if(PROFILE_SIMULATION)
 		profiler.beginFunction(current_day,"debug_validatePeopleSetup");
 
-
-
 	bool households_are_sorted = thrust::is_sorted(people_households.begin(), people_households.begin() + number_people);
 	debug_assert(households_are_sorted, "household indexes are not monotonically increasing");
-
-	h_vec h_child_indexes = people_child_indexes;
-	h_vec h_adult_indexes = people_adult_indexes;
-
-	debug_assert(people_adult_indexes.size() == number_adults, "people_adult_indexes array missized");
-	debug_assert(people_child_indexes.size() == number_children, "people_child_indexes array missized");
 
 	int children_count = 0;
 	int adult_count = 0;
@@ -749,16 +739,16 @@ void PandemicSim::debug_validatePeopleSetup()
 		else if(myAge == AGE_ADULT)
 		{
 			//index is in adult array
-			bool found_adult_index = std::binary_search(h_adult_indexes.begin(), h_adult_indexes.end(), myIdx);
-			debug_assert(found_adult_index, "could not find adult index in people_adult_index array, person", myIdx);
+	//		bool found_adult_index = std::binary_search(h_adult_indexes.begin(), h_adult_indexes.end(), myIdx);
+	//		debug_assert(found_adult_index, "could not find adult index in people_adult_index array, person", myIdx);
 
 			adult_count++;
 		}
 		else
 		{
 			//index is in child array
-			bool found_child_index = std::binary_search(h_child_indexes.begin(), h_child_indexes.end(), myIdx);
-			debug_assert(found_child_index, "could not find child index in people_child_index array, person", myIdx);
+		//	bool found_child_index = std::binary_search(h_child_indexes.begin(), h_child_indexes.end(), myIdx);
+		//	debug_assert(found_child_index, "could not find child index in people_child_index array, person", myIdx);
 
 			//workplace is assigned to valid school for age type
 			int school_loc_type = CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[myAge];
@@ -826,7 +816,7 @@ void PandemicSim::debug_validateInfectionStatus()
 		}
 		else
 		{
-			debug_assert(status_p >= 0 && status_p < NUM_PROFILES, "invalid status/profile code");
+			debug_assert(status_p >= 0 && status_p < NUM_SHEDDING_PROFILES, "invalid status/profile code");
 
 			int profile_day = current_day - day_p;
 			debug_assert(profile_day >= 0 && profile_day < CULMINATION_PERIOD, "pandemic day is outside of valid range");
@@ -844,7 +834,7 @@ void PandemicSim::debug_validateInfectionStatus()
 		}
 		else
 		{
-			debug_assert(status_s >= 0 && status_s < NUM_PROFILES, "invalid status/profile code");
+			debug_assert(status_s >= 0 && status_s < NUM_SHEDDING_PROFILES, "invalid status/profile code");
 
 			int profile_day = current_day - day_s;
 			debug_assert(profile_day >= 0 && profile_day < CULMINATION_PERIOD, "seasonal day is outside of valid range");
