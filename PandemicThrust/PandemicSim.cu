@@ -1871,22 +1871,11 @@ __global__ void kernel_makeContacts_weekday(int num_infected, int * infected_ind
 										   kval_t * output_kval_sum_arr, randOffset_t rand_offset, personId_t number_people)
 
 {
-	/*int contactsPerBlock = blockDim.x * MAX_CONTACTS_WEEKDAY;
-	
-	extern __shared__ int sharedMem[];
-	personId_t * infector_array = (personId_t *) sharedMem;
-	personId_t * victim_array = (personId_t *) &infector_array[contactsPerBlock];
-	kval_t * contact_kval_array = (kval_t *) &victim_array[contactsPerBlock];
-
-	personId_t * myInfectorArray = infector_array + (threadIdx.x * MAX_CONTACTS_WEEKDAY);
-	personId_t * myVictimArray = victim_array + (threadIdx.x * MAX_CONTACTS_WEEKDAY);
-	kval_type_t * myKvalArray = contact_kval_array + (threadIdx.x * MAX_CONTACTS_WEEKDAY);*/
-
 	const int rand_counts_consumed = 2;
 
 	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
 	{
-		int output_offset_base = MAX_CONTACTS_WEEKDAY * myPos;
+		int output_offset_base = DEFINE_MAX_CONTACTS_WEEKDAY * myPos;
 
 		personId_t * myInfectorArray = output_infector_arr + output_offset_base;
 		personId_t * myVictimArray = output_victim_arr + output_offset_base;
@@ -1906,21 +1895,13 @@ __global__ void kernel_makeContacts_weekday(int num_infected, int * infected_ind
 			errand_infected_locs,
 			errand_loc_offsets, errand_people,
 			number_locations,
-			myInfectorArray, myVictimArray, myKvalArray,
+			myVictimArray, myKvalArray,
 			myRandOffset, number_people);
 
 		output_kval_sum_arr[myPos] = kval_sum;
 
-		/*memcpy(output_infector_arr + output_offset_base, myInfectorArray, sizeof(personId_t) * MAX_CONTACTS_WEEKDAY);
-		memcpy(output_victim_arr + output_offset_base, myVictimArray, sizeof(personId_t) * MAX_CONTACTS_WEEKDAY);
-		memcpy(output_kval_arr + output_offset_base, myKvalArray, sizeof(kval_type_t) * MAX_CONTACTS_WEEKDAY);*/
-
-		/*if(threadIdx.x == 0)
-		{
-			memcpy(output_infector_arr + output_offset_base, infector_array, sizeof(personId_t) * contactsPerBlock);
-			memcpy(output_victim_arr + output_offset_base, victim_array, sizeof(personId_t) * contactsPerBlock);
-			memcpy(output_kval_arr + output_offset_base, contact_kval_array, sizeof(kval_type_t) * contactsPerBlock);
-		}*/
+		for(int c =0; c < DEFINE_MAX_CONTACTS_WEEKDAY; c++)
+			myInfectorArray[c] = myIdx;
 	}
 }
 
@@ -1931,7 +1912,7 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 											  personId_t * errand_loc_offsets, personId_t * errand_people,
 											  int * errand_populationCount_exclusiveScan,
 											  int number_locations,
-											  personId_t * output_infector_ptr, personId_t * output_victim_ptr, kval_type_t * output_kval_ptr,
+											  personId_t * output_victim_ptr, kval_type_t * output_kval_ptr,
 											  randOffset_t myRandOffset)
 {
 
@@ -1956,21 +1937,18 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 			NULL, //household_people
 			output_victim_ptr + 0,
 			output_kval_ptr + 0);
-		output_infector_ptr[0] = myIdx;
 
 		household_kval_sum += device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[1], CONTACT_TYPE_HOME,
 			NULL, //household_people
 			output_victim_ptr + 1,
 			output_kval_ptr + 1);
-		output_infector_ptr[1] = myIdx;
 
 		household_kval_sum += device_selectRandomPersonFromLocation(
 			myIdx, loc_offset, loc_count,rand_union.i[2], CONTACT_TYPE_HOME,
 			NULL, //household_people
 			output_victim_ptr + 2,
 			output_kval_ptr + 2);
-		output_infector_ptr[2] = myIdx;
 	}
 
 	//get an errand profile between 0 and 5
@@ -2002,7 +1980,6 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 			errand_people,
 			output_victim_ptr + 3,
 			output_kval_ptr + 3);
-		output_infector_ptr[3] = myIdx;
 	}
 	{
 		//do it again for the second errand contact
@@ -2020,7 +1997,6 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 			errand_people,
 			output_victim_ptr + 4,
 			output_kval_ptr + 4);
-		output_infector_ptr[4] = myIdx;
 	}
 
 	kval_t kval_sum = household_kval_sum + errand_kval_sum;
@@ -2042,9 +2018,12 @@ __global__ void kernel_makeContacts_weekend(int num_infected, personId_t * infec
 	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
 	{
 		int myIdx = infected_indexes[myPos];
+		int output_offset_base = DEFINE_MAX_CONTACTS_WEEKEND * myPos;
 
 
-		int output_offset_base = MAX_CONTACTS_WEEKEND * myPos;
+		personId_t * myInfectorArr = output_infector_arr + output_offset_base;
+		personId_t * myVictimArr = output_victim_arr + output_offset_base;
+		kval_type_t * myKvalArr = output_kval_arr + output_offset_base;
 
 		randOffset_t myRandOffset = rand_offset + (myPos * rand_counts_consumed); 
 
@@ -2055,10 +2034,14 @@ __global__ void kernel_makeContacts_weekend(int num_infected, personId_t * infec
 			errand_loc_offsets, errand_people,
 			errand_populationCount_exclusiveScan,
 			number_locations,
-			output_infector_arr + output_offset_base,
 			output_victim_arr + output_offset_base,
 			output_kval_arr + output_offset_base,
 			myRandOffset);
+
+		for(int c = 0; c < DEFINE_MAX_CONTACTS_WEEKEND; c++)
+		{
+			myInfectorArr[c] = myIdx;
+		}
 	}
 }
 
@@ -2222,7 +2205,7 @@ __device__ kval_t device_selectRandomPersonFromLocation(
 	}
 
 	//write data into output memory locations
-	(*output_infector_idx_ptr) = infector_idx;
+//	(*output_infector_idx_ptr) = infector_idx;
 	(*output_victim_idx_ptr) = victim_idx;
 	(*output_kval_ptr) = contact_type;
 
@@ -3900,6 +3883,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, int * infected_indexe
 										   personId_t * errand_loc_offsets, personId_t * errand_people,
 										   int number_locations, 
 										   personId_t * output_infector_arr, personId_t * output_victim_arr, kval_type_t * output_kval_arr,
+										   action_t * output_action_arr,
 										   status_t * people_status_p_arr, status_t * people_status_s_arr,
 										   day_t * people_days_pandemic, day_t * people_days_seasonal,
 										   gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,

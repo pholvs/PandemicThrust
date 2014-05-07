@@ -309,7 +309,7 @@ __device__ kval_t device_makeContacts_weekday(
 	int * errand_infected_locs,
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	int number_locations,
-	personId_t * output_infector_arr, personId_t * output_victim_arr, kval_type_t * output_kval_arr,
+	personId_t * output_victim_arr, kval_type_t * output_kval_arr,
 	randOffset_t myRandOffset, personId_t number_people);
 
 __global__ void kernel_makeContacts_weekend(int num_infected, personId_t * infected_indexes,
@@ -333,7 +333,7 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 
 
 __device__ personId_t device_getVictimAtIndex(personId_t index_to_fetch, personId_t * location_people, kval_type_t contact_type);
-__device__ kval_t device_selectRandomPersonFromLocation(personId_t infector_idx, personId_t loc_offset, int loc_count, unsigned int rand_val, kval_type_t desired_kval, personId_t * location_people_arr, personId_t * output_infector_idx_arr, personId_t * output_victim_idx_arr, kval_type_t * output_kval_arr);
+__device__ kval_t device_selectRandomPersonFromLocation(personId_t infector_idx, personId_t loc_offset, int loc_count, unsigned int rand_val, kval_type_t desired_kval, personId_t * location_people_arr, personId_t * output_victim_idx_arr, kval_type_t * output_kval_arr);
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_offset, int * loc_count);
 __device__ void device_lookupLocationData_singleHour(int myIdx, int * lookup_arr, int * loc_offset_arr, int * loc_max_contacts_arr, int * loc_offset, int * loc_count, int * loc_max_contacts);
 __device__ void device_lookupLocationData_weekendErrand(int myPos, int errand_slot, int * infected_hour_val_arr, int * infected_hour_destination_arr, int * loc_offset_arr, int number_locations, int * hour_populationCount_exclusiveScan, int * output_location_offset, int * output_location_count);
