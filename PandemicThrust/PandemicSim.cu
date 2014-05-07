@@ -1368,23 +1368,38 @@ void PandemicSim::doWeekend_wholeDay()
 //	debug_dump_array_toTempFile("../weekend_loc_offsets.csv","loc offset",&errand_locationOffsets_multiHour, (NUM_WEEKEND_ERRAND_HOURS * number_workplaces));
 
 
+	int blocks = cuda_makeWeekendContactsKernel_blocks;
+	int threads = cuda_makeWeekendContactsKernel_threads;
+
+	//get the amount of shared memory needed for each block
+	size_t smem_size = sizeof(personId_t) + sizeof(kval_type_t);
+	smem_size *= DEFINE_MAX_CONTACTS_WEEKEND;
+	smem_size *= threads;
+
 	//launch kernel
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
 
-	/*kernel_makeContacts_weekend<<<cuda_makeWeekendContactsKernel_blocks,cuda_makeWeekendContactsKernel_threads>>>(
-		infected_count, infected_indexes_ptr,
-		people_households_ptr, household_offsets_ptr, //household_people_ptr,
-		errand_infected_weekendHours_ptr, errand_infected_locations_ptr, //errand_infected_ContactsDesired_ptr,
-		errand_locationOffsets_multiHour_ptr ,errand_people_table_ptr, errand_hourOffsets_weekend_ptr,
+	kernel_weekend_sharedMem<<<blocks,threads,smem_size>>>(infected_count,
+		infected_indexes_ptr, people_ages_ptr,
+		people_households_ptr,household_offsets_ptr,
+		errand_infected_weekendHours_ptr, errand_infected_locations_ptr,
+		errand_locationOffsets_multiHour_ptr,errand_people_table_ptr,
+		errand_hourOffsets_weekend_ptr,
 		number_workplaces,
-		daily_contact_infectors_ptr, daily_contact_victims_ptr, daily_contact_kval_types_ptr,
-		infected_daily_kval_sum_ptr, rand_offset);*/
+		daily_contact_infectors_ptr,daily_contact_victims_ptr, 
+		daily_contact_kval_types_ptr, daily_action_type_ptr,
+		people_status_pandemic_ptr,people_status_seasonal_ptr,
+		people_days_pandemic_ptr,people_days_seasonal_ptr,
+		people_gens_pandemic_ptr,people_gens_seasonal_ptr,
+		debug_contactsToActions_float1_ptr,debug_contactsToActions_float2_ptr,
+		debug_contactsToActions_float3_ptr,debug_contactsToActions_float4_ptr,
+		current_day,rand_offset);
 
 	if(TIMING_BATCH_MODE == 0)
 	{
-		int rand_counts_used = 2 * infected_count;
-		rand_offset += rand_counts_used;
+		int rand_counts_consumed = 6;
+		rand_offset += (infected_count * rand_counts_consumed);
 	}
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
@@ -1774,7 +1789,8 @@ __device__ kval_t device_makeContacts_weekday(
 	}
 
 	//generate the second set of random numbers
-	threefry2x64_ctr_t tf_ctr_2 = {{myRandOffset + 1, myRandOffset + 1}};
+	myRandOffset += gridDim.x * blockDim.x;
+	threefry2x64_ctr_t tf_ctr_2 = {{myRandOffset, myRandOffset}};
 	rand_union.c[1] = threefry2x64(tf_ctr_2, tf_k);
 
 	//now the number of contacts made will diverge, so we need to count it
@@ -2034,8 +2050,8 @@ __global__ void kernel_makeContacts_weekend(int num_infected, personId_t * infec
 			errand_loc_offsets, errand_people,
 			errand_populationCount_exclusiveScan,
 			number_locations,
-			output_victim_arr + output_offset_base,
-			output_kval_arr + output_offset_base,
+			myVictimArr,
+			myKvalArr,
 			myRandOffset);
 
 		for(int c = 0; c < DEFINE_MAX_CONTACTS_WEEKEND; c++)
@@ -2345,54 +2361,22 @@ __device__ void device_assignErrandDestinations_weekend_wholeDay(int * errand_de
 	device_fishWeekendErrandDestination(&rand_union.i[2], errand_destination_ptr+2);
 }
 
-__global__ void kernel_doInfectedSetup_weekend(int * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
-											   int * output_infected_hour_ptr, int * output_infected_dest_ptr, int * output_contacts_desired_ptr,
+__global__ void kernel_doInfectedSetup_weekend(personId_t * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
+											   int * output_infected_hour_ptr, int * output_infected_dest_ptr,
 											   int num_infected, randOffset_t rand_offset)
 {
-	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
-	union{
-		threefry2x64_ctr_t c;
-		unsigned int i[4];
-	} rand_union;
-
-	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <= num_infected / 4; myGridPos += gridDim.x * blockDim.x)
+	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <num_infected; myGridPos += gridDim.x * blockDim.x)
 	{
-		randOffset_t myRandOffset = rand_offset + myGridPos;
-		threefry2x64_ctr_t tf_ctr = {{myRandOffset, myRandOffset}};
-		rand_union.c = threefry2x64(tf_ctr, tf_k);
 
-		int myPos = myGridPos * 4;
-		if(myPos < num_infected)
-		{
-			device_doAllInfectedSetup_weekend(&rand_union.i[0], 
-				myPos, input_infected_indexes_ptr, 
-				input_errand_hours_ptr, input_errand_destinations_ptr,
-				output_infected_hour_ptr, output_infected_dest_ptr, output_contacts_desired_ptr);
-		}
+		int myIdx = input_infected_indexes_ptr[myPos];
+		int input_offset = DEFINE_NUM_WEEKEND_ERRANDS * myIdx;
+		int output_offset = DEFINE_NUM_WEEKEND_ERRANDS * myPos;
 
-		if(myPos + 1 < num_infected)
-		{
-			device_doAllInfectedSetup_weekend(&rand_union.i[1], 
-				myPos+1, input_infected_indexes_ptr, 
-				input_errand_hours_ptr, input_errand_destinations_ptr,
-				output_infected_hour_ptr, output_infected_dest_ptr, output_contacts_desired_ptr);
-		}
-
-		if(myPos + 2  < num_infected)
-		{
-			device_doAllInfectedSetup_weekend(&rand_union.i[2], 
-				myPos+2, input_infected_indexes_ptr, 
-				input_errand_hours_ptr, input_errand_destinations_ptr,
-				output_infected_hour_ptr, output_infected_dest_ptr, output_contacts_desired_ptr);
-		}
-
-		if(myPos + 3 < num_infected)
-		{
-			device_doAllInfectedSetup_weekend(&rand_union.i[3], 
-				myPos+3, input_infected_indexes_ptr, 
-				input_errand_hours_ptr, input_errand_destinations_ptr,
-				output_infected_hour_ptr, output_infected_dest_ptr, output_contacts_desired_ptr);
-		}
+		device_copyInfectedErrandLocs_weekend(
+			input_errand_hours_ptr + input_offset,
+			input_errand_destinations_ptr + input_offset,
+			output_infected_hour_ptr + output_offset,
+			output_infected_dest_ptr + output_offset);
 	}
 }
 
@@ -2406,24 +2390,6 @@ __device__ void device_copyInfectedErrandLocs_weekend(int * input_hours_ptr, int
 	output_dests_ptr[1] = input_dests_ptr[1];
 	output_dests_ptr[2] = input_dests_ptr[2];
 }
-
-__device__ void device_doAllInfectedSetup_weekend(unsigned int * rand_val, int myPos, int * infected_indexes_arr, int * input_hours_arr, int * input_dests_arr, int * output_hours_arr, int * output_dests_arr, int * output_contacts_desired_arr)
-{
-	int myIdx = infected_indexes_arr[myPos];
-	int input_offset = NUM_WEEKEND_ERRANDS * myIdx;
-	int output_offset = NUM_WEEKEND_ERRANDS * myPos;
-
-	device_copyInfectedErrandLocs_weekend(
-		input_hours_arr + input_offset,
-		input_dests_arr + input_offset,
-		output_hours_arr + output_offset,
-		output_dests_arr + output_offset);
-
-	const int NUM_POSSIBLE_CONTACT_ASSIGNMENTS = 6;
-	int profile = *rand_val % NUM_POSSIBLE_CONTACT_ASSIGNMENTS;
-	output_contacts_desired_arr[myPos] = profile;
-}
-
 
 __global__ void kernel_countInfectedStatus(
 	status_t * pandemic_status_array, status_t * seasonal_status_array, 
@@ -2510,7 +2476,7 @@ struct isInfectedPred
 		int status_seasonal = thrust::get<0>(status_tuple);
 		int status_pandemic = thrust::get<1>(status_tuple);
 
-		return status_pandemic >= 0 || status_seasonal >= 0;
+		return status_pandemic >= STATUS_SUSCEPTIBLE || status_seasonal >= STATUS_SUSCEPTIBLE;
 	}
 };
 
@@ -3831,10 +3797,16 @@ __device__ void device_doContactsToActions_immediately(
 
 	threefry2x64_ctr_t tf_ctr_1 = {{myRandOffset, myRandOffset}};
 	rand_union.c[0] = threefry2x64(tf_ctr_1, tf_k);
+	//myRandOffset += gridDim.x * blockDim.x;
+
 	threefry2x64_ctr_t tf_ctr_2 = {{myRandOffset + 1, myRandOffset + 1}};
 	rand_union.c[1] = threefry2x64(tf_ctr_2, tf_k);
+	//myRandOffset += gridDim.x * blockDim.x;
+
 	threefry2x64_ctr_t tf_ctr_3 = {{myRandOffset + 2, myRandOffset + 2}};
 	rand_union.c[2] = threefry2x64(tf_ctr_3, tf_k);
+	//myRandOffset += gridDim.x * blockDim.x;
+
 	threefry2x64_ctr_t tf_ctr_4 = {{myRandOffset + 3, myRandOffset + 3}};
 	rand_union.c[3] = threefry2x64(tf_ctr_4, tf_k);
 
@@ -3974,3 +3946,146 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 	}
 }
 
+__global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
+										   int * household_lookup, personId_t * household_offsets,
+										   int * infected_errand_hours, int * errand_infected_destinations,
+										   personId_t * errand_loc_offsets, personId_t * errand_people,
+										   int * errand_populationCount_exclusiveScan,
+										   int number_locations, 
+										   personId_t * output_infector_arr, personId_t * output_victim_arr, kval_type_t * output_kval_arr,
+										   action_t * output_action_arr,
+										   status_t * people_status_p_arr, status_t * people_status_s_arr,
+										   day_t * people_days_pandemic, day_t * people_days_seasonal,
+										   gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
+										   float * float_rand1, float * float_rand2,
+										   float * float_rand3, float * float_rand4,
+										   day_t current_day,
+										   randOffset_t rand_offset)
+
+{
+	int contactsPerBlock = blockDim.x * DEFINE_MAX_CONTACTS_WEEKEND;
+	
+	extern __shared__ int sharedMem[];
+	personId_t * victim_array = (personId_t *) sharedMem;
+	kval_type_t * contact_kval_array = (kval_type_t *) &victim_array[contactsPerBlock];
+
+	personId_t * myVictimArray = victim_array + (threadIdx.x * DEFINE_MAX_CONTACTS_WEEKEND);
+	kval_type_t * myKvalArray = contact_kval_array + (threadIdx.x * DEFINE_MAX_CONTACTS_WEEKEND);
+
+	const int rand_counts_consumed = 6;
+
+
+	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
+	{
+		randOffset_t myRandOffset = rand_offset + (myPos * rand_counts_consumed);
+
+		int output_offset_base = DEFINE_MAX_CONTACTS_WEEKEND * myPos;
+
+		personId_t myIdx = infected_indexes[myPos];
+
+		kval_t kval_sum = device_makeContacts_weekend(
+			myIdx,myPos,
+			household_lookup,household_offsets,
+			infected_errand_hours,errand_infected_destinations,
+			errand_loc_offsets,errand_people,
+			errand_populationCount_exclusiveScan,
+			number_locations,
+			myVictimArray,myKvalArray,
+			myRandOffset);
+
+		//makeContacts consumes 2 counts
+		myRandOffset += 2;
+
+		//convert the contacts to actions immediately
+		device_doContactsToActions_immediately(
+			myIdx, kval_sum,
+			myVictimArray,myKvalArray, DEFINE_MAX_CONTACTS_WEEKEND,
+			people_status_p_arr,people_status_s_arr,
+			people_days_pandemic,people_days_seasonal,
+			people_gens_pandemic,people_gens_seasonal,
+			output_action_arr + output_offset_base,
+			float_rand1 + output_offset_base, float_rand2 + output_offset_base,
+			float_rand3 + output_offset_base, float_rand4 + output_offset_base,
+			current_day, myRandOffset);
+		//consumes 4 counts
+
+		if(SIM_VALIDATION)
+		{
+			for(int c = 0; c < DEFINE_MAX_CONTACTS_WEEKEND; c++)
+			{
+				int output_offset = output_offset_base + c;
+
+				output_infector_arr[output_offset] = myIdx;
+				output_victim_arr[output_offset] = myVictimArray[c];
+				output_kval_arr[output_offset] = myKvalArray[c];
+			}
+		}
+	}
+}
+
+
+__device__ action_t device_doInfectionActionImmediately_statusWord(personId_t victim,day_t day_to_set,
+														bool infects_pandemic, bool infects_seasonal,
+														status_t profile_p_to_set, status_t profile_s_to_set,
+														gen_t gen_p_to_set, gen_t gen_s_to_set,
+														personStatusStruct_word_t * status_struct_array)
+{
+	action_t result;
+
+	while(true)
+	{
+		//get status word from memory and unpack
+		personStatusStruct_word_t packed_word = status_struct_array[victim];
+		union personStatusUnion u;	//get union
+		u.w = packed_word;		//store packed word in union
+
+		//attempt to do pandemic changes
+		int success_pandemic = ACTION_INFECT_NONE;
+		if(infects_pandemic && u.s.status_pandemic == STATUS_SUSCEPTIBLE)
+		{
+			u.s.status_pandemic = profile_p_to_set;
+			u.s.day_pandemic = day_to_set;
+			u.s.gen_pandemic = gen_p_to_set;
+
+			success_pandemic = ACTION_INFECT_PANDEMIC;
+		}
+
+		//attempt to do seasonal changes
+		int success_seasonal = ACTION_INFECT_NONE;
+		if(infects_seasonal && u.s.status_seasonal == STATUS_SUSCEPTIBLE)
+		{
+			u.s.status_seasonal = profile_s_to_set;
+			u.s.day_seasonal = day_to_set;
+			u.s.gen_seasonal = gen_s_to_set;
+
+			success_seasonal = ACTION_INFECT_SEASONAL;
+		}
+
+		result = success_pandemic + success_seasonal;
+
+		if(result == ACTION_INFECT_NONE)
+			return result;
+
+		personStatusStruct_word_t packedword_in_mem = atomicCAS(
+			status_struct_array + victim, //target
+			packed_word,   //expected: the storage word we got from memory
+			u.w); //new val: the modified storage word from the memory
+
+		if(packedword_in_mem == packed_word)
+			return result;
+		//else, loop and try again
+	}
+}
+
+struct isInfectedPred_statusWord
+{
+	__device__ bool operator() (personStatusStruct_word_t statusWord)
+	{
+		union personStatusUnion u;
+		u.w = statusWord;
+
+		bool is_infected = u.s.status_pandemic > STATUS_SUSCEPTIBLE || u.s.status_seasonal > STATUS_SUSCEPTIBLE;
+
+		return is_infected;
+	}
+};
