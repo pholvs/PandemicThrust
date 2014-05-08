@@ -129,3 +129,19 @@ struct actionIsSuccessful_pred
 		return action_type > 0;
 	}
 };
+
+struct schedulingPair_generator : public thrust::unary_function<int,schedulingPair_t>
+{
+	__device__ schedulingPair_t operator() (int location_val)
+	{
+		schedulingPair_t ret;
+		ret.second = location_val;
+	}
+};
+struct schedulingPair_dest_comparator
+{
+	__device__ bool operator() (schedulingPair_t a, schedulingPair_t b)
+	{
+		return a.second < b.second;
+	}
+};

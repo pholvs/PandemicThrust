@@ -1,14 +1,12 @@
 #pragma once
-
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
+#include "simParameters.h"
 #include "profiler.h"
 #include "indirect.h"
-
 #include "resource_logging.h"
 
-#include "simParameters.h"
 
 #ifndef __max
 #define __max(a,b) (((a) > (b)) ? (a) : (b))
@@ -167,10 +165,8 @@ public:
 
 	thrust::device_vector<personId_t> errand_people_table;		//people_array for errands
 	personId_t * errand_people_table_ptr;
-	vec_t errand_people_weekendHours;		//which hours people will do errands on weekends
-	int * errand_people_weekendHours_ptr;
-	vec_t errand_people_destinations;		//where each person is going on their errand
-	int * errand_people_destinations_ptr;
+	thrust::device_vector<schedulingPair_t> errand_scheduling_vec;
+	schedulingPair_t * errand_scheduling_vec_ptr;
 
 	vec_t errand_infected_locations;			//the location of infected
 	int * errand_infected_locations_ptr;
@@ -202,8 +198,8 @@ public:
 	void weekday_doInfectedSetup_wholeDay();
 
 	void doWeekend_wholeDay();
-	void weekend_assignErrands(vec_t * errand_people, vec_t * errand_hours, vec_t * errand_destinations);
-	void weekend_doInfectedSetup_wholeDay(vec_t * errand_hours, vec_t * errand_destinations, vec_t * infected_hours, vec_t * infected_destinations);
+	void weekend_assignErrands();
+	void weekend_doInfectedSetup_wholeDay();
 
 	void validateContacts_wholeDay();
 	void debug_copyFixedData();
@@ -314,23 +310,23 @@ __device__ void device_nullFillContact(personId_t * output_victim_idx, kval_type
 
 
 //weekday errand assignment
-__global__ void kernel_assignWeekdayAfterschoolAndErrands(age_t * people_ages_arr, int number_people, int * output_errand_dest_arr, randOffset_t rand_offset);
-__device__ void device_assignAfterschoolOrErrandDests_weekday(unsigned int rand_val1, unsigned int rand_val2,age_t myAge, int * output_dest1, int * output_dest2);
+__global__ void kernel_assignWeekdayAfterschoolAndErrands(age_t * people_ages_arr, int number_people, schedulingPair_t * errand_schedule_array, randOffset_t rand_offset);
+__device__ void device_assignAfterschoolOrErrandDests_weekday(unsigned int rand_val1, unsigned int rand_val2,age_t myAge,  schedulingPair_t * output_dest1, schedulingPair_t * output_dest2);
 __device__ unsigned int device_fishAfterschoolOrErrandDestination_weekday(unsigned int rand_val, age_t myAge);
 
 //weekday infected setup
-__global__ void kernel_doInfectedSetup_weekday_wholeDay(personId_t * infected_index_arr, int num_infected, int * loc_lookup_arr, age_t * ages_lookup_arr, int num_people, int * output_infected_locs, errand_contacts_profile_t * output_infected_contacts_desired, randOffset_t rand_offset);
-__device__ void device_doAllWeekdayInfectedSetup(unsigned int rand_val, int myPos, personId_t * infected_indexes_arr, int * loc_lookup_arr, age_t * ages_lookup_arr, int num_people, int * output_infected_locs, errand_contacts_profile_t * output_infected_contacts_desired);
+__global__ void kernel_doInfectedSetup_weekday_wholeDay(personId_t * infected_index_arr, int num_infected, schedulingPair_t * errand_scheduling_array, age_t * ages_lookup_arr, int num_people, int * output_infected_locs, errand_contacts_profile_t * output_infected_contacts_desired, randOffset_t rand_offset);
+__device__ void device_doAllWeekdayInfectedSetup(unsigned int rand_val, int myPos, personId_t * infected_indexes_arr, schedulingPair_t * errand_scheduling_array, age_t * ages_lookup_arr, int num_people, int * output_infected_locs, errand_contacts_profile_t * output_infected_contacts_desired);
 __device__ void device_assignContactsDesired_weekday_wholeDay(unsigned int rand_val, age_t myAge, errand_contacts_profile_t * output_contacts_desired);
-__device__ void device_copyInfectedErrandLocs_weekday(int * loc_lookup_ptr, int * output_infected_locs_ptr, int num_people);
+__device__ void device_copyInfectedErrandLocs_weekday(schedulingPair_t * errand_lookup_ptr, int * output_infected_locs_ptr, int num_people);
 
 
 //weekend errand assignment
-__global__ void kernel_assignWeekendErrands(personId_t * people_indexes_arr, int * errand_hours_arr, int * errand_destination_arr, int num_people, randOffset_t rand_offset);
+__global__ void kernel_assignWeekendErrands(personId_t * people_indexes_arr, schedulingPair_t * errand_scheduling_array, int num_people, randOffset_t rand_offset);
 __device__ void device_copyPeopleIndexes_weekend_wholeDay(int * id_dest_ptr, int myIdx);
-__device__ void device_assignErrandHours_weekend_wholeDay(int * hours_dest_ptr, randOffset_t myRandOffset);
-__device__ void device_assignErrandDestinations_weekend_wholeDay(int * errand_destination_arr, int my_rand_offset);
-__device__ void device_fishWeekendErrandDestination(unsigned int rand_val, int * output_ptr);
+__device__ void device_assignErrandHours_weekend_wholeDay(schedulingPair_t * errand_array_ptr, randOffset_t myRandOffset);
+__device__ void device_assignErrandDestinations_weekend_wholeDay(schedulingPair_t * errand_array_ptr, int my_rand_offset);
+__device__ int device_fishWeekendErrandDestination(unsigned int rand_val);
 
 //weekend errand infected setup
 __global__ void kernel_doInfectedSetup_weekend(personId_t * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,

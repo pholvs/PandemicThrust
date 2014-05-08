@@ -1,5 +1,6 @@
 #pragma once
 
+#include <thrust/pair.h>
 
 typedef unsigned long randOffset_t;
 
@@ -13,6 +14,8 @@ typedef unsigned char errand_contacts_profile_t;
 typedef unsigned char kval_type_t;
 
 typedef int action_t;	//could be smaller, but only stored in validation mode
+
+typedef thrust::pair<int,int> schedulingPair_t;
 
 //unused
 typedef unsigned char max_contacts_t;  
