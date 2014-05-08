@@ -130,12 +130,14 @@ struct actionIsSuccessful_pred
 	}
 };
 
-struct schedulingPair_generator : public thrust::unary_function<int,schedulingPair_t>
+struct schedulingPair_dest_generator : public thrust::unary_function<int,schedulingPair_t>
 {
 	__device__ schedulingPair_t operator() (int location_val)
 	{
 		schedulingPair_t ret;
 		ret.second = location_val;
+
+		return ret;
 	}
 };
 struct schedulingPair_dest_comparator
@@ -143,5 +145,24 @@ struct schedulingPair_dest_comparator
 	__device__ bool operator() (schedulingPair_t a, schedulingPair_t b)
 	{
 		return a.second < b.second;
+	}
+};
+
+
+struct schedulingPair_hour_generator : public thrust::unary_function<int,schedulingPair_t>
+{
+	__device__ schedulingPair_t operator() (int hour_val)
+	{
+		schedulingPair_t ret;
+		ret.first = hour_val;
+
+		return ret;
+	}
+};
+struct schedulingPair_hour_comparator
+{
+	__device__ bool operator() (schedulingPair_t a, schedulingPair_t b)
+	{
+		return a.first < b.first;
 	}
 };

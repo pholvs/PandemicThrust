@@ -165,8 +165,8 @@ public:
 
 	thrust::device_vector<personId_t> errand_people_table;		//people_array for errands
 	personId_t * errand_people_table_ptr;
-	thrust::device_vector<schedulingPair_t> errand_scheduling_vec;
-	schedulingPair_t * errand_scheduling_vec_ptr;
+	thrust::device_vector<schedulingPair_t> errand_scheduling_array;
+	schedulingPair_t * errand_scheduling_array_ptr;
 
 	vec_t errand_infected_locations;			//the location of infected
 	int * errand_infected_locations_ptr;
@@ -329,10 +329,10 @@ __device__ void device_assignErrandDestinations_weekend_wholeDay(schedulingPair_
 __device__ int device_fishWeekendErrandDestination(unsigned int rand_val);
 
 //weekend errand infected setup
-__global__ void kernel_doInfectedSetup_weekend(personId_t * input_infected_indexes_ptr, int * input_errand_hours_ptr, int * input_errand_destinations_ptr,
+__global__ void kernel_doInfectedSetup_weekend(personId_t * input_infected_indexes_ptr, schedulingPair_t * errand_scheduling_array,
 											   int * output_infected_hour_ptr, int * output_infected_dest_ptr,
 											   int num_infected);
-__device__ void device_copyInfectedErrandLocs_weekend(int * input_hours_ptr, int * input_dests_ptr, int * output_hours_ptr, int * output_dests_ptr);
+__device__ void device_copyInfectedErrandLocs_weekend(schedulingPair_t * errand_ptr, int * output_hours_ptr, int * output_dests_ptr);
 
 
 //output metrics
