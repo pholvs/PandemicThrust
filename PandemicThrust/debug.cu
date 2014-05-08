@@ -12,21 +12,21 @@
 h_vec h_infected_indexes;
 int h_infected_indexes_freshness = -2;
 
-h_vec h_people_status_pandemic;
-h_vec h_people_status_seasonal;
-h_vec h_people_days_pandemic;
-h_vec h_people_days_seasonal;
-h_vec h_people_gens_pandemic;
-h_vec h_people_gens_seasonal;
+thrust::host_vector<status_t> h_people_status_pandemic;
+thrust::host_vector<status_t> h_people_status_seasonal;
+thrust::host_vector<day_t> h_people_days_pandemic;
+thrust::host_vector<day_t> h_people_days_seasonal;
+thrust::host_vector<gen_t> h_people_gens_pandemic;
+thrust::host_vector<gen_t> h_people_gens_seasonal;
 int h_people_status_data_freshness = -2;
 
 
-h_vec h_contacts_infector;
-h_vec h_contacts_victim;
-h_vec h_contacts_kval;
+thrust::host_vector<personId_t> h_contacts_infector;
+thrust::host_vector<personId_t> h_contacts_victim;
+thrust::host_vector<personId_t> h_contacts_kval;
 int h_contacts_freshness = -2;
 
-h_vec h_action_types;
+thrust::host_vector<action_t> h_action_types;
 thrust::host_vector<float> h_actions_rand1, h_actions_rand2, h_actions_rand3, h_actions_rand4;
 int h_actions_freshness = -2;
 
@@ -35,10 +35,10 @@ h_vec h_errand_people_destinations;
 int errand_lookup_freshness = -2;
 
 
-h_vec h_errand_people_table;
+thrust::host_vector<personId_t> h_errand_people_table;
 h_vec h_errand_infected_locations;
 h_vec h_errand_infected_weekendHours;
-h_vec h_errand_infected_contactsDesired;
+thrust::host_vector<errand_contacts_profile_t> h_errand_infected_contactsDesired;
 h_vec h_errand_locationOffsets_multiHour;
 h_vec h_errand_hourOffsets_weekend;
 int h_errand_data_freshness = -2;
@@ -48,20 +48,20 @@ int h_errand_data_freshness = -2;
 //fixed data
 h_vec h_people_households;
 h_vec h_people_workplaces;
-h_vec h_people_age;
+thrust::host_vector<age_t> h_people_age;
 
 h_vec h_workplace_offsets;
-h_vec h_workplace_people;
+thrust::host_vector<personId_t> h_workplace_people;
 h_vec h_workplace_max_contacts;
 
 h_vec h_household_offsets;
-h_vec h_household_people;
+thrust::host_vector<personId_t> h_household_people;
 
 #define DOUBLECHECK_CONTACTS 0
 
 void PandemicSim::debug_copyFixedData()
 {
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.beginFunction(current_day, "debug_copyFixedData");
 
 	thrust::copy_n(people_households.begin(), number_people, h_people_households.begin());
@@ -74,13 +74,13 @@ void PandemicSim::debug_copyFixedData()
 
 	thrust::copy_n(household_offsets.begin(), number_households + 1, h_household_offsets.begin());
 
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.endFunction(current_day, number_people);
 }
 
 void PandemicSim::debug_sizeHostArrays()
 {
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.beginFunction(current_day, "debug_sizeHostArrays");
 
 	h_people_households.resize(people_households.size());
@@ -124,16 +124,14 @@ void PandemicSim::debug_sizeHostArrays()
 	h_errand_locationOffsets_multiHour.resize(errand_locationOffsets_multiHour.size());
 	h_errand_hourOffsets_weekend.reserve(errand_hourOffsets_weekend.size());
 
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.endFunction(current_day,number_people);
 }
 
 void PandemicSim::validateContacts_wholeDay()
 {
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.beginFunction(current_day, "validateContacts_wholeDay");
-
-	int num_contacts = is_weekend() ? infected_count * MAX_CONTACTS_WEEKEND : infected_count * MAX_CONTACTS_WEEKDAY;
 
 	debug_freshenContacts();
 	debug_freshenInfected();
@@ -154,8 +152,8 @@ void PandemicSim::validateContacts_wholeDay()
 	debug_validateInfectedLocArrays();
 
 	int contacts_per_person = is_weekend() ?  MAX_CONTACTS_WEEKEND : MAX_CONTACTS_WEEKDAY;
-	int errands_per_person = is_weekend() ? NUM_WEEKEND_ERRANDS : NUM_WEEKDAY_ERRANDS;
-	int errand_hours = is_weekend() ? NUM_WEEKEND_ERRAND_HOURS : NUM_WEEKDAY_ERRAND_HOURS;
+//	int errands_per_person = is_weekend() ? NUM_WEEKEND_ERRANDS : NUM_WEEKDAY_ERRANDS;
+//	int errand_hours = is_weekend() ? NUM_WEEKEND_ERRAND_HOURS : NUM_WEEKDAY_ERRAND_HOURS;
 	int weekend = is_weekend();
 
 	//do verification
@@ -262,11 +260,11 @@ void PandemicSim::validateContacts_wholeDay()
 					//weekend contact:  see if the infector and the victim go on an errand to the same location during the same hour
 					if(weekend)
 					{
-						int inf_hour_arr[NUM_WEEKEND_ERRANDS];
-						int inf_loc_arr[NUM_WEEKEND_ERRANDS];
+	//					int inf_hour_arr[NUM_WEEKEND_ERRANDS];
+	//					int inf_loc_arr[NUM_WEEKEND_ERRANDS];
 
-						int vic_hour_arr[NUM_WEEKEND_ERRANDS];
-						int vic_loc_arr[NUM_WEEKEND_ERRANDS];
+	//					int vic_hour_arr[NUM_WEEKEND_ERRANDS];
+	//					int vic_loc_arr[NUM_WEEKEND_ERRANDS];
 						//iterate errands
 						for(int infector_errand = 0; infector_errand < NUM_WEEKEND_ERRANDS && locs_matched == 0; infector_errand++)
 						{
@@ -276,8 +274,8 @@ void PandemicSim::validateContacts_wholeDay()
 							int infector_errand_loc = h_errand_people_destinations[inf_errand_lookup_offset];
 							int infector_errand_hour = h_errand_people_weekendHours[inf_errand_lookup_offset];
 
-							inf_hour_arr[infector_errand]=infector_errand_hour;
-							inf_loc_arr[infector_errand] = infector_errand_loc;
+						//	inf_hour_arr[infector_errand]=infector_errand_hour;
+					//		inf_loc_arr[infector_errand] = infector_errand_loc;
 
 							//iterate victim errands
 							for(int victim_errand = 0; victim_errand < NUM_WEEKEND_ERRANDS && locs_matched == 0; victim_errand++)
@@ -288,8 +286,8 @@ void PandemicSim::validateContacts_wholeDay()
 								int victim_errand_hour = h_errand_people_weekendHours[victim_errand_lookup_offset];
 
 
-								vic_hour_arr[victim_errand] = victim_errand_hour;
-								vic_loc_arr[victim_errand] = victim_errand_loc;
+						//		vic_hour_arr[victim_errand] = victim_errand_hour;
+						//		vic_loc_arr[victim_errand] = victim_errand_loc;
 
 								//if the infector and victim locations and hours match, save and break
 								if(infector_errand_loc == victim_errand_loc && infector_errand_hour == victim_errand_hour)
@@ -401,13 +399,13 @@ void PandemicSim::validateContacts_wholeDay()
 	if(log_contacts)
 		fflush(fContacts);
 	
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.endFunction(current_day, infected_count);
 }
 
 void PandemicSim::debug_copyErrandLookup()
 {
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.beginFunction(current_day,"debug_copyErrandLookup");
 
 	int num_errands = number_people * errands_per_person();
@@ -421,7 +419,7 @@ void PandemicSim::debug_copyErrandLookup()
 		thrust::copy_n(errand_people_destinations.begin(), num_errands, h_errand_people_destinations.begin());
 	}
 
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.endFunction(current_day,num_errands);
 }
 
@@ -476,7 +474,7 @@ void PandemicSim::debug_dumpInfectedErrandLocs()
 
 void PandemicSim::debug_validateInfectedLocArrays()
 {
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.beginFunction(current_day, "debug_validateInfectedLocArrays");
 
 	int weekend = is_weekend();
@@ -504,7 +502,7 @@ void PandemicSim::debug_validateInfectedLocArrays()
 		}
 	}
 
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.endFunction(current_day, infected_count);
 }
 
@@ -573,8 +571,8 @@ void PandemicSim::debug_validateErrandSchedule()
 			
 			if(myAge == AGE_ADULT || weekend)
 			{
-				bool errand_loc_test = errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[first_errand_row];
-				bool errand_loc_test_2 = errand_loc < number_workplaces;
+//				bool errand_loc_test = errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[first_errand_row];
+	//			bool errand_loc_test_2 = errand_loc < number_workplaces;
 				debug_assert(errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[first_errand_row] && errand_loc < number_workplaces, "person location is not valid for errand PDF, person", myIdx);
 			}
 			else
@@ -713,7 +711,7 @@ void PandemicSim::debug_validateLocationArrays()
 
 void PandemicSim::debug_validatePeopleSetup()
 {
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.beginFunction(current_day,"debug_validatePeopleSetup");
 
 	bool households_are_sorted = thrust::is_sorted(people_households.begin(), people_households.begin() + number_people);
@@ -731,23 +729,12 @@ void PandemicSim::debug_validatePeopleSetup()
 		debug_assert(hh >= 0 && hh < number_households, "invalid household ID assigned to person", myIdx);
 		debug_assert(wp >= 0 && wp < number_workplaces, "invalid workplace ID assigned to person", myIdx);
 
-		if(myAge < 0)
+		if(myAge == AGE_ADULT)
 		{
-			debug_print("invalid age assignment");
-		} 
-		else if(myAge == AGE_ADULT)
-		{
-			//index is in adult array
-	//		bool found_adult_index = std::binary_search(h_adult_indexes.begin(), h_adult_indexes.end(), myIdx);
-	//		debug_assert(found_adult_index, "could not find adult index in people_adult_index array, person", myIdx);
-
 			adult_count++;
 		}
-		else
+		else if(myAge >= 0 && myAge < AGE_ADULT)
 		{
-			//index is in child array
-		//	bool found_child_index = std::binary_search(h_child_indexes.begin(), h_child_indexes.end(), myIdx);
-		//	debug_assert(found_child_index, "could not find child index in people_child_index array, person", myIdx);
 
 			//workplace is assigned to valid school for age type
 			int school_loc_type = CHILD_AGE_SCHOOLTYPE_LOOKUP_HOST[myAge];
@@ -757,18 +744,20 @@ void PandemicSim::debug_validatePeopleSetup()
 
 			children_count++;
 		}
+		else
+			debug_assert(false,"invalid age code for person",myIdx);
 	}
 
 	debug_assert(number_adults == adult_count, "number_adults/arraysize does not match num of adults actually counted");
 	debug_assert(number_children == children_count, "number_children/arraysize does not match num of adults actually counted");
 
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.endFunction(current_day,number_people);
 }
 
 void PandemicSim::debug_validateInfectionStatus()
 {
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.beginFunction(current_day,"debug_validateInfectionStatus");
 
 	/*thrust::pair<int, int> extrema = thrust::minmax_element(infected_indexes.begin(), infected_indexes.begin() + infected_count);
@@ -791,8 +780,8 @@ void PandemicSim::debug_validateInfectionStatus()
 		int gen_p = h_people_gens_pandemic[myIdx];
 		int gen_s = h_people_gens_seasonal[myIdx];
 
-		bool active_p = status_p != STATUS_SUSCEPTIBLE && status_p != STATUS_RECOVERED;
-		bool active_s = status_s != STATUS_SUSCEPTIBLE && status_s != STATUS_RECOVERED;
+		bool active_p = status_p >= STATUS_INFECTED && status_p < STATUS_INFECTED + NUM_SHEDDING_PROFILES;
+		bool active_s = status_s >= STATUS_INFECTED && status_s < STATUS_INFECTED + NUM_SHEDDING_PROFILES;
 		bool found_in_infected = std::binary_search(h_infected_indexes.begin(), h_infected_indexes.begin() + infected_count, myIdx);
 
 		if(active_p || active_s)
@@ -815,7 +804,7 @@ void PandemicSim::debug_validateInfectionStatus()
 		}
 		else
 		{
-			debug_assert(status_p >= 0 && status_p < NUM_SHEDDING_PROFILES, "invalid status/profile code");
+			debug_assert(status_p >= STATUS_INFECTED && status_p < STATUS_INFECTED + NUM_SHEDDING_PROFILES, "invalid status/profile code");
 
 			int profile_day = current_day - day_p;
 			debug_assert(profile_day >= 0 && profile_day < CULMINATION_PERIOD, "pandemic day is outside of valid range");
@@ -833,7 +822,7 @@ void PandemicSim::debug_validateInfectionStatus()
 		}
 		else
 		{
-			debug_assert(status_s >= 0 && status_s < NUM_SHEDDING_PROFILES, "invalid status/profile code");
+			debug_assert(status_s >= STATUS_INFECTED && status_s < STATUS_INFECTED + NUM_SHEDDING_PROFILES, "invalid status/profile code");
 
 			int profile_day = current_day - day_s;
 			debug_assert(profile_day >= 0 && profile_day < CULMINATION_PERIOD, "seasonal day is outside of valid range");
@@ -842,7 +831,7 @@ void PandemicSim::debug_validateInfectionStatus()
 
 	debug_assert(h_infected_count == infected_count, "validation count of infected disagrees with sim");
 
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.endFunction(current_day,number_people);
 }
 
@@ -917,7 +906,7 @@ void PandemicSim::debug_freshenErrands()
 
 void PandemicSim::debug_validateActions()
 {
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.beginFunction(current_day, "debug_validateActions");
 
 	int contacts_per_person = contacts_per_person();
@@ -947,13 +936,15 @@ void PandemicSim::debug_validateActions()
 			int action_type = h_action_types[i];
 
 			int infector_status_p = h_people_status_pandemic[infector];
+			int infector_day_p = h_people_days_pandemic[infector];
 			int infector_status_s = h_people_status_seasonal[infector];
+			int infector_day_s = h_people_days_seasonal[infector];
 
 			//test that all floats are 0 <= x <= 1
 			debug_assert(y_p >= 0.f && y_p <= 1.0f, "y_p out of valid range, person", infector);
 			debug_assert(y_s >= 0.f && y_s <= 1.0f, "y_s out of valid range, person", infector);
 
-			if(infector_status_p >= 0)
+			if(infector_status_p >= STATUS_INFECTED && infector_day_p <= current_day)
 			{
 				debug_assert(inf_prob_p >= 0.f, "infector has pandemic but no chance of infection, infector ", infector);
 			}
@@ -963,7 +954,7 @@ void PandemicSim::debug_validateActions()
 				debug_assert(inf_prob_p <= 0.f, "infector does not have pandemic, but chance is > 0, infector ", infector);
 			}
 
-			if(infector_status_s >= 0)
+			if(infector_status_s >= STATUS_INFECTED && infector_day_s <= current_day)
 			{
 				debug_assert(inf_prob_s >= 0.f, "infector has seasonal but no chance of infection, infector ", infector);
 			}
@@ -973,8 +964,9 @@ void PandemicSim::debug_validateActions()
 				debug_assert(inf_prob_s <= 0.f, "infector does not have seasonal, but chance is > 0, infector", infector);
 			}
 
-			bool infects_p = y_p < inf_prob_p;
-			bool infects_s = y_s < inf_prob_s;
+			//this is fine, just clearing a warning
+			/*bool infects_p = y_p < inf_prob_p;
+			bool infects_s = y_s < inf_prob_s;*/
 
 			/*bool victim_susceptible_pandemic = h_people_status_pandemic[victim] == STATUS_SUSCEPTIBLE;
 			bool victim_susceptible_seasonal = h_people_status_seasonal[victim] == STATUS_SUSCEPTIBLE;
@@ -1013,7 +1005,7 @@ void PandemicSim::debug_validateActions()
 	if(log_actions)
 		fflush(fActions);
 
-	if(PROFILE_SIMULATION)
+	if(SIM_PROFILING)
 		profiler.endFunction(current_day, total_contacts);
 }
 //fprintf(fActions,"%d,%d,%f,%f,%f,%f\n",

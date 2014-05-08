@@ -17,15 +17,5 @@ int main()
 
 	logging_pollMemoryUsage_done();
 
-	/*
-	try{
-	}
-	catch (std::runtime_error &e)
-	{
-		std::cerr << "Program crashed: " << e.what() << std::endl;
-
-	}*/
-
-
 	return 0;
 }

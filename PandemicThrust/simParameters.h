@@ -1,24 +1,23 @@
 #pragma once
 
 
-typedef unsigned int randOffset_t;
+typedef unsigned long randOffset_t;
 
 typedef int personId_t;
-typedef int status_t;
-typedef int age_t;
 
-typedef int day_t;
-typedef int gen_t;
+typedef unsigned char age_t;
+typedef unsigned char day_t;
+typedef unsigned char gen_t;
 
-typedef int loc_work_t;
-typedef int loc_hh_t;
-typedef int max_contacts_t;
+typedef unsigned char errand_contacts_profile_t;
+typedef unsigned char kval_type_t;
 
-typedef int errand_contacts_profile_t;
+typedef int action_t;	//could be smaller, but only stored in validation mode
 
-typedef int action_t;
-
-typedef int kval_type_t;
+//unused
+typedef unsigned char max_contacts_t;  
+typedef unsigned char errandHour_t;
+typedef unsigned int locId_t;
 
 
 #define ACTION_INFECT_NONE 0
@@ -26,63 +25,68 @@ typedef int kval_type_t;
 #define ACTION_INFECT_PANDEMIC 2
 #define ACTION_INFECT_BOTH 3
 
+
+typedef unsigned int status_t;
+#define STATUS_SUSCEPTIBLE 1
+#define STATUS_INFECTED 2
+#define STATUS_RECOVERED 0
+
+/*typedef int status_t;
 #define STATUS_SUSCEPTIBLE -1
 #define STATUS_INFECTED 0
-#define STATUS_RECOVERED -2
+#define STATUS_RECOVERED -2*/
 
-
-#define DAY_NOT_INFECTED -1
-#define GENERATION_NOT_INFECTED -1
-#define NULL_PERSON_INDEX -1;
+//these null values will take val -1 if their type is signed, or MAX_VAL if it's unsigned
+#define DAY_NOT_INFECTED (day_t) -1
+#define GENERATION_NOT_INFECTED (gen_t) -1
+#define NULL_PERSON_INDEX (personId_t) -1
+#define AGE_NOT_SET (age_t) -1
+#define LOC_ID_NOT_SET (locId_t) -1
 
 #define INITIAL_DAY 0
 #define INITIAL_GEN 0
 
-const int BUSINESS_TYPE_PRESCHOOL = 3;
-const int BUSINESS_TYPE_ELEMENTARYSCHOOL = 4;
-const int BUSINESS_TYPE_MIDDLESCHOOL = 5;
-const int BUSINESS_TYPE_HIGHSCHOOL = 6;
-const int BUSINESS_TYPE_UNIVERSITY = 7;
-const int BUSINESS_TYPE_AFTERSCHOOL = 8;
+#define BUSINESS_TYPE_PRESCHOOL 3
+#define BUSINESS_TYPE_ELEMENTARYSCHOOL 4
+#define BUSINESS_TYPE_MIDDLESCHOOL 5
+#define BUSINESS_TYPE_HIGHSCHOOL 6
+#define BUSINESS_TYPE_UNIVERSITY 7
+#define BUSINESS_TYPE_AFTERSCHOOL 8
 
-#define DEFINE_NUM_WEEKDAY_ERRANDS 2
-const int NUM_WEEKDAY_ERRANDS = DEFINE_NUM_WEEKDAY_ERRANDS;
-#define DEFINE_NUM_WEEKDAY_ERRAND_HOURS 2
-const int NUM_WEEKDAY_ERRAND_HOURS = DEFINE_NUM_WEEKDAY_ERRAND_HOURS;
+#define NUM_WEEKDAY_ERRANDS 2
+#define NUM_WEEKDAY_ERRAND_HOURS 2
 
-#define DEFINE_NUM_WEEKEND_ERRANDS 3
-const int NUM_WEEKEND_ERRANDS = DEFINE_NUM_WEEKEND_ERRANDS;
-#define DEFINE_NUM_WEEKEND_ERRAND_HOURS 10
-const int NUM_WEEKEND_ERRAND_HOURS = DEFINE_NUM_WEEKEND_ERRAND_HOURS;
+#define NUM_WEEKEND_ERRANDS 3
+#define NUM_WEEKEND_ERRAND_HOURS 10
 
-const int NUM_CONTACT_TYPES = 6;
-const kval_type_t CONTACT_TYPE_NONE = 0;
-const kval_type_t CONTACT_TYPE_WORKPLACE = 1;
-const kval_type_t CONTACT_TYPE_SCHOOL = 2;
-const kval_type_t CONTACT_TYPE_ERRAND = 3;
-const kval_type_t CONTACT_TYPE_AFTERSCHOOL = 4;
-const kval_type_t CONTACT_TYPE_HOME = 5;
+#define NUM_CONTACT_TYPES 6
+#define CONTACT_TYPE_NONE 0
+#define CONTACT_TYPE_WORKPLACE 1
+#define CONTACT_TYPE_SCHOOL 2
+#define CONTACT_TYPE_ERRAND 3
+#define CONTACT_TYPE_AFTERSCHOOL 4
+#define CONTACT_TYPE_HOME 5
 
-#define DEFINE_NUM_SHEDDING_PROFILES 6
-const int NUM_SHEDDING_PROFILES = DEFINE_NUM_SHEDDING_PROFILES;
-const int PROFILE_GAMMA1 = 0;
-const int PROFILE_LOGNORM1 = 1;
-const int PROFILE_WEIB1 = 2;
-const int PROFILE_GAMMA2 = 3;
-const int PROFILE_LOGNORM2 = 4;
-const int PROFILE_WEIB2 = 5;
+#define NUM_SHEDDING_PROFILES 6
+#define PROFILE_GAMMA1 0
+#define PROFILE_LOGNORM1 1
+#define PROFILE_WEIB1 2
+#define PROFILE_GAMMA2 3
+#define PROFILE_LOGNORM2 4
+#define PROFILE_WEIB2 5
 
-#define DEFINE_NUM_WEEKDAY_ERRAND_PROFILES 4
-#define DEFINE_NUM_WEEKEND_ERRAND_PROFILES 6
+#define NUM_WEEKDAY_ERRAND_PROFILES 4
+#define NUM_WEEKEND_ERRAND_PROFILES 6
 
-#define DEFINE_WEEKDAY_ERRAND_PROFILE_AFTERSCHOOL 3
-const int WEEKDAY_ERRAND_PROFILE_AFTERSCHOOL = DEFINE_WEEKDAY_ERRAND_PROFILE_AFTERSCHOOL;
+#define WEEKDAY_ERRAND_PROFILE_AFTERSCHOOL 3
 
+#define AGE_5 0
+#define AGE_9 1
+#define AGE_14 2
+#define AGE_17 3
+#define AGE_22 4
+#define AGE_ADULT 5
 
-
-const age_t AGE_5 = 0;
-const age_t AGE_9 = 1;
-const age_t AGE_14 = 2;
-const age_t AGE_17 = 3;
-const age_t AGE_22 = 4;
-const age_t AGE_ADULT = 5;
+//the first row of the PDF with a value > 0
+#define FIRST_WEEKDAY_ERRAND_ROW 9
+#define FIRST_WEEKEND_ERRAND_ROW 9
