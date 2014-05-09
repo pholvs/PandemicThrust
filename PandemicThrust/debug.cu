@@ -30,16 +30,14 @@ thrust::host_vector<action_t> h_action_types;
 thrust::host_vector<float> h_actions_rand1, h_actions_rand2, h_actions_rand3, h_actions_rand4;
 int h_actions_freshness = -2;
 
-thrust::host_vector<schedulingPair_t> h_errand_scheduling_array;
+thrust::host_vector<errandSchedule_t> h_people_errands;
 int errand_lookup_freshness = -2;
 
 
 thrust::host_vector<personId_t> h_errand_people_table;
-h_vec h_errand_infected_locations;
-h_vec h_errand_infected_weekendHours;
+thrust::host_vector<errandSchedule_t> h_infected_errands_array;
 thrust::host_vector<errand_contacts_profile_t> h_errand_infected_contactsDesired;
 h_vec h_errand_locationOffsets_multiHour;
-h_vec h_errand_hourOffsets_weekend;
 int h_errand_data_freshness = -2;
 
 
@@ -113,14 +111,12 @@ void PandemicSim::debug_sizeHostArrays()
 	h_actions_rand4.resize(debug_contactsToActions_float4.size());
 
 	h_errand_people_table.resize(errand_people_table.size());
-	h_errand_scheduling_array.resize(errand_scheduling_array.size());
+	h_people_errands.resize(people_errands.size());
 
-	h_errand_infected_locations.resize(errand_infected_locations.size());
-	h_errand_infected_weekendHours.resize(errand_infected_weekendHours.size());
+	h_infected_errands_array.resize(infected_errands.size());
 	h_errand_infected_contactsDesired.resize(errand_infected_ContactsDesired.size());
 
-	h_errand_locationOffsets_multiHour.resize(errand_locationOffsets_multiHour.size());
-	h_errand_hourOffsets_weekend.reserve(errand_hourOffsets_weekend.size());
+	h_errand_locationOffsets_multiHour.resize(errand_locationOffsets.size());
 
 	if(SIM_PROFILING)
 		profiler.endFunction(current_day,number_people);
@@ -150,8 +146,6 @@ void PandemicSim::validateContacts_wholeDay()
 	debug_validateInfectedLocArrays();
 
 	int contacts_per_person = is_weekend() ?  MAX_CONTACTS_WEEKEND : MAX_CONTACTS_WEEKDAY;
-//	int errands_per_person = is_weekend() ? NUM_WEEKEND_ERRANDS : NUM_WEEKDAY_ERRANDS;
-//	int errand_hours = is_weekend() ? NUM_WEEKEND_ERRAND_HOURS : NUM_WEEKDAY_ERRAND_HOURS;
 	int weekend = is_weekend();
 
 	//do verification
@@ -258,11 +252,11 @@ void PandemicSim::validateContacts_wholeDay()
 					//weekend contact:  see if the infector and the victim go on an errand to the same location during the same hour
 					if(weekend)
 					{
-	//					int inf_hour_arr[NUM_WEEKEND_ERRANDS];
-	//					int inf_loc_arr[NUM_WEEKEND_ERRANDS];
+						int inf_hour_arr[NUM_WEEKEND_ERRANDS];
+						int inf_loc_arr[NUM_WEEKEND_ERRANDS];
 
-	//					int vic_hour_arr[NUM_WEEKEND_ERRANDS];
-	//					int vic_loc_arr[NUM_WEEKEND_ERRANDS];
+						int vic_hour_arr[NUM_WEEKEND_ERRANDS];
+						int vic_loc_arr[NUM_WEEKEND_ERRANDS];
 						//iterate errands
 						for(int infector_errand = 0; infector_errand < NUM_WEEKEND_ERRANDS && locs_matched == 0; infector_errand++)
 						{
@@ -270,23 +264,23 @@ void PandemicSim::validateContacts_wholeDay()
 							//fish out the infector's errand
 							int inf_errand_lookup_offset = (infected_index * NUM_WEEKEND_ERRANDS) + infector_errand;
 
-							int infector_errand_loc = h_errand_scheduling_array[inf_errand_lookup_offset].second;
-							int infector_errand_hour = h_errand_scheduling_array[inf_errand_lookup_offset].first;
+							int infector_errand_loc = h_people_errands[inf_errand_lookup_offset] % number_workplaces;
+							int infector_errand_hour = h_people_errands[inf_errand_lookup_offset] / number_workplaces;
 
-						//	inf_hour_arr[infector_errand]=infector_errand_hour;
-					//		inf_loc_arr[infector_errand] = infector_errand_loc;
+							inf_hour_arr[infector_errand] = infector_errand_hour;
+							inf_loc_arr[infector_errand] = infector_errand_loc;
 
 							//iterate victim errands
 							for(int victim_errand = 0; victim_errand < NUM_WEEKEND_ERRANDS && locs_matched == 0; victim_errand++)
 							{
 								//fish out victim's errand
 								int victim_errand_lookup_offset = (contact_victim * NUM_WEEKEND_ERRANDS) + victim_errand;
-								int victim_errand_loc = h_errand_scheduling_array[victim_errand_lookup_offset].second;
-								int victim_errand_hour = h_errand_scheduling_array[victim_errand_lookup_offset].first;
+								int victim_errand_loc = h_people_errands[victim_errand_lookup_offset] % number_workplaces;
+								int victim_errand_hour = h_people_errands[victim_errand_lookup_offset] / number_workplaces;
 
 
-						//		vic_hour_arr[victim_errand] = victim_errand_hour;
-						//		vic_loc_arr[victim_errand] = victim_errand_loc;
+								vic_hour_arr[victim_errand] = victim_errand_hour;
+								vic_loc_arr[victim_errand] = victim_errand_loc;
 
 								//if the infector and victim locations and hours match, save and break
 								if(infector_errand_loc == victim_errand_loc && infector_errand_hour == victim_errand_hour)
@@ -321,8 +315,8 @@ void PandemicSim::validateContacts_wholeDay()
 						for(int hour = 0; hour < NUM_WEEKDAY_ERRANDS && locs_matched == 0; hour++)
 						{
 							//fish out the locations for this hour
-							int infector_errand_loc = h_errand_scheduling_array[(hour * number_people) + infected_index].second;
-							int victim_errand_loc = h_errand_scheduling_array[(hour * number_people) + contact_victim].second;
+							int infector_errand_loc = h_people_errands[(hour * number_people) + infected_index] % number_workplaces;
+							int victim_errand_loc = h_people_errands[(hour * number_people) + contact_victim] % number_workplaces;
 						
 							//if the locations (and implicitly hours) match, save and break
 							if(infector_errand_loc == victim_errand_loc)
@@ -353,8 +347,8 @@ void PandemicSim::validateContacts_wholeDay()
 				else if(contact_type == CONTACT_TYPE_AFTERSCHOOL)
 				{
 					//fish out afterschool location from the first hour slot of "errands"
-					infector_loc = h_errand_scheduling_array[infected_index].second;
-					victim_loc = h_errand_scheduling_array[contact_victim].second;
+					infector_loc = h_people_errands[infected_index] % number_workplaces;
+					victim_loc = h_people_errands[contact_victim] % number_workplaces;
 					locs_matched = (infector_loc == victim_loc);
 
 					//individuals must not be adults
@@ -407,8 +401,8 @@ void PandemicSim::debug_copyErrandLookup()
 	if(SIM_PROFILING)
 		profiler.beginFunction(current_day,"debug_copyErrandLookup");
 
-	int num_errands = number_people * errands_per_person();
-	thrust::copy_n(errand_scheduling_array.begin(), num_errands,h_errand_scheduling_array.begin());
+	int num_errands = number_people * errands_per_person_today();
+	thrust::copy_n(people_errands.begin(), num_errands,h_people_errands.begin());
 
 	if(SIM_PROFILING)
 		profiler.endFunction(current_day,num_errands);
@@ -432,8 +426,8 @@ void PandemicSim::debug_dumpInfectedErrandLocs()
 	}
 
 	thrust::copy_n(infected_indexes.begin(), infected_count, h_infected_indexes.begin());
-	thrust::copy_n(errand_infected_locations.begin(), errand_dests_to_copy, h_errand_infected_locations.begin());
-	thrust::copy_n(errand_locationOffsets_multiHour.begin(), loc_offsets_to_copy, h_errand_locationOffsets_multiHour.begin());
+	thrust::copy_n(infected_errands.begin(), errand_dests_to_copy, h_infected_errands_array.begin());
+	thrust::copy_n(errand_locationOffsets.begin(), loc_offsets_to_copy, h_errand_locationOffsets_multiHour.begin());
 
 	int errands_per_person = is_weekend() ? NUM_WEEKEND_ERRANDS : NUM_WEEKDAY_ERRANDS;
 
@@ -445,7 +439,7 @@ void PandemicSim::debug_dumpInfectedErrandLocs()
 
 		for(int hour = 0; hour < errands_per_person; hour++)
 		{
-			int i_loc = h_errand_infected_locations[(i * NUM_WEEKDAY_ERRAND_HOURS) + hour];
+			int i_loc = h_infected_errands_array[(i * NUM_WEEKDAY_ERRAND_HOURS) + hour] % number_workplaces;
 
 			int loc_offset = h_errand_locationOffsets_multiHour[(hour * number_workplaces) + i_loc];
 			int loc_count;
@@ -478,16 +472,15 @@ void PandemicSim::debug_validateInfectedLocArrays()
 		for(int errand = 0; errand < errands_per_day; errand++)
 		{
 			int errand_loc_array_val;
-			int inf_loc_array_val = h_errand_infected_locations[(pos * errands_per_day) + errand];
-
 			if(weekend)
 			{
-				errand_loc_array_val = h_errand_scheduling_array[(inf_idx * errands_per_day) + errand].second;
+				errand_loc_array_val = h_people_errands[(inf_idx * errands_per_day) + errand];
 			}
 			else
 			{
-				errand_loc_array_val = h_errand_scheduling_array[(errand * number_people) + inf_idx].second;
+				errand_loc_array_val = h_people_errands[(errand * number_people) + inf_idx];
 			}
+			int inf_loc_array_val  = h_infected_errands_array[(pos * errands_per_day) + errand];
 
 			debug_assert("infected_loc value does not match errand_dest val", errand_loc_array_val,inf_loc_array_val);
 		}
@@ -501,9 +494,11 @@ void PandemicSim::debug_doublecheckContact_usingPeopleTable(int pos, int number_
 {
 	int valid_contact = 0;
 
+	throw;
+	/*
 	for(int hour = 0; hour < number_hours; hour++)
 	{
-		int loc = h_errand_infected_locations[(number_hours * pos) + hour];
+		int loc = h_in[(number_hours * pos) + hour];
 
 
 		int loc_offset_pos = (number_workplaces * hour) + loc;
@@ -534,13 +529,13 @@ void PandemicSim::debug_doublecheckContact_usingPeopleTable(int pos, int number_
 			valid_contact = 1;
 	}
 
-	debug_assert(valid_contact, "doublecheck: could not find matching errand location between infector and victim, infector index", infector);
+	debug_assert(valid_contact, "doublecheck: could not find matching errand location between infector and victim, infector index", infector);*/
 }
 
 void PandemicSim::debug_validateErrandSchedule()
 {
 	int weekend = is_weekend();
-	int errands_per_person = errands_per_person();
+	int errands_per_person = errands_per_person_today();
 	int first_errand_row = is_weekend() ? FIRST_WEEKEND_ERRAND_ROW : FIRST_WEEKDAY_ERRAND_ROW;
 
 	for(int myIdx = 0; myIdx < number_people; myIdx++)
@@ -549,21 +544,33 @@ void PandemicSim::debug_validateErrandSchedule()
 
 		for(int errand = 0; errand < errands_per_person; errand++)
 		{
-			int errand_loc;
+			errandSchedule_t scheduled_errand;
 
 			if(weekend)
 			{
-				errand_loc = h_errand_scheduling_array[(myIdx * NUM_WEEKEND_ERRANDS) + errand].second;
+				scheduled_errand = h_people_errands[(myIdx * NUM_WEEKEND_ERRANDS) + errand];
 			}
 			else
 			{
-				errand_loc = h_errand_scheduling_array[(errand * number_people) + myIdx].second;
+				scheduled_errand = h_people_errands[(errand * number_people) + myIdx];
 			}
-			
+
+			int errand_loc = get_location_from_errandSchedule_t(scheduled_errand);
+			int errand_hour = get_hour_from_errandSchedule_t(scheduled_errand);
+
+			//validate hour
+			if(weekend)
+			{
+				debug_assert(errand_hour >= 0 && errand_hour < NUM_WEEKEND_ERRAND_HOURS, "scheduled weekend errand has invalid hour, person",myIdx);
+			}
+			else
+			{
+				debug_assert("scheduled weekday errand has unexpected hour",errand,errand_hour);
+			}
+
+			//validate location
 			if(myAge == AGE_ADULT || weekend)
 			{
-//				bool errand_loc_test = errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[first_errand_row];
-	//			bool errand_loc_test_2 = errand_loc < number_workplaces;
 				debug_assert(errand_loc >= WORKPLACE_TYPE_OFFSET_HOST[first_errand_row] && errand_loc < number_workplaces, "person location is not valid for errand PDF, person", myIdx);
 			}
 			else
@@ -598,98 +605,68 @@ void PandemicSim::debug_dumpWeekendErrandTables(h_vec * h_sorted_people, h_vec *
 
 void PandemicSim::debug_validateLocationArrays()
 {
-	int weekend = is_weekend();
-	int num_errand_hours = weekend ? NUM_WEEKEND_ERRAND_HOURS : NUM_WEEKDAY_ERRAND_HOURS;
+	int num_errand_hours = is_weekend() ? NUM_WEEKEND_ERRAND_HOURS : NUM_WEEKDAY_ERRAND_HOURS;
+	int num_errands_total = num_all_errands_today();
 
-	int num_errands_total;
+	thrust::host_vector<errandSchedule_t> h_sorted_errands(num_errands_total);
+	thrust::copy_n(people_errands.begin(), num_errands_total, h_sorted_errands.begin());
 
-	if(weekend)
-	{
-		num_errands_total = NUM_WEEKEND_ERRANDS * number_people;
+	thrust::copy_n(errand_locationOffsets.begin(), number_workplaces * errand_hours_today(), h_errand_locationOffsets_multiHour.begin());
 
-		thrust::copy_n(errand_hourOffsets_weekend.begin(), NUM_WEEKEND_ERRAND_HOURS + 1, h_errand_hourOffsets_weekend.begin());
-	}
-	else
-	{
-		num_errands_total = NUM_WEEKDAY_ERRANDS * number_people;
-	}
-
-	h_vec h_sorted_people(num_errands_total);
-	thrust::copy_n(errand_people_table.begin(), num_errands_total, h_sorted_people.begin());
-
-	thrust::host_vector<schedulingPair_t> h_sorted_errands(num_errands_total);
-	thrust::copy_n(errand_scheduling_array.begin(), num_errands_total, h_sorted_errands.begin());
-
-//	debug_dumpWeekendErrandTables(&h_sorted_people, &h_sorted_hours, &h_sorted_dests);
-	thrust::copy_n(errand_locationOffsets_multiHour.begin(),number_workplaces * num_errand_hours, h_errand_locationOffsets_multiHour.begin());
-
-
-
-	//validate hour offsets
-	if(weekend)
-		for(int hour = 0; hour < num_errand_hours + 1; hour++)
-		{
-			int hour_offset = h_errand_hourOffsets_weekend[hour];
-			if(hour > 0)
-			{
-				int hour_before_offset = h_sorted_errands[hour_offset - 1].first;
-				debug_assert("hour before offset is wrong", hour - 1, hour_before_offset);
-			}
-
-			if(hour != num_errand_hours)
-			{
-				int hour_at_offset = h_sorted_errands[hour_offset].first;
-				debug_assert("hour at offset is wrong", hour, hour_at_offset);
-			}
-		}
-	
-
+	//test that the hours transition properly
 	for(int hour = 0; hour < num_errand_hours; hour++)
 	{
-		int test_last_loc_offset = h_errand_locationOffsets_multiHour[(hour * number_workplaces) + (number_workplaces - 1)];
+		int first_loc_offset_index = hour * number_workplaces;
+		if(hour > 0)
+		{
+			int offset_to_last_loc_of_previous_hour = h_errand_locationOffsets_multiHour[first_loc_offset_index - 1];
+			errandSchedule_t errand_at_offset = h_sorted_errands[offset_to_last_loc_of_previous_hour];
 
-		int hour_offset = weekend ? h_errand_hourOffsets_weekend[hour] : hour * number_people;
+			int hour_of_errand = get_hour_from_errandSchedule_t(errand_at_offset);
+			int locId_of_errand = get_location_from_errandSchedule_t(errand_at_offset);
 
+			debug_assert("location_offset_array: last hour of previous errand does not have expected value",hour - 1,hour_of_errand);
+		}
+
+		//check that first location has the proper value
+		{
+			int offset_to_first_loc = h_errand_locationOffsets_multiHour[first_loc_offset_index];
+			errandSchedule_t errand_at_offset = h_sorted_errands[offset_to_first_loc];
+
+			int hour_of_errand = get_hour_from_errandSchedule_t(errand_at_offset);
+			int locId_of_errand = get_location_from_errandSchedule_t(errand_at_offset);
+
+			debug_assert("location_offset_array: first errand of hour does not have expected value",hour,hour_of_errand);
+		}
+	}
+	
+	for(int hour = 0; hour < num_errand_hours; hour++)
+	{
 		for(int loc = 0; loc < number_workplaces; loc++)
 		{
-			int loc_offset_pos = (hour * number_workplaces) + loc;
+			//index to where this location offset is stored
+			int loc_offset_index = (hour * number_workplaces) + loc;
 
-			int loc_offset = h_errand_locationOffsets_multiHour[loc_offset_pos];
-			int next_loc_offset;
+			//offset of the first person/errand at this location
+			int loc_offset = h_errand_locationOffsets_multiHour[loc_offset_index];
 
-			if(loc == number_workplaces - 1)
-			{
-				if(weekend)
-				{
-					int people_present_this_hour = h_errand_hourOffsets_weekend[hour+1] - h_errand_hourOffsets_weekend[hour];
-					next_loc_offset = people_present_this_hour;
-				}
-				else
-				{
-					next_loc_offset = number_people;
-				}
-			}
-			else
-				next_loc_offset = h_errand_locationOffsets_multiHour[loc_offset_pos+1];
-
-			int loc_count = next_loc_offset - loc_offset;
-
-			if(weekend)
-				loc_offset += h_errand_hourOffsets_weekend[hour];
-			else
-				loc_offset += (hour * number_people);
+			int loc_count = h_errand_locationOffsets_multiHour[loc_offset_index + 1] - loc_offset;
 
 			if(loc_count > 0)
 			{
-				int location_at_offset = h_sorted_errands[loc_offset].second;
+				errandSchedule_t first_errand_at_offset = h_sorted_errands[loc_offset];
+				int hour_of_first_errand = get_hour_from_errandSchedule_t(first_errand_at_offset);
+				int locId_of_first_errand = get_location_from_errandSchedule_t(first_errand_at_offset);
 
-				if(loc != location_at_offset)
-					printf("");
+				debug_assert("location_offset_array: hour at offset[0] does not match",hour,hour_of_first_errand);
+				debug_assert("location_offset_array: locId at offset[0] does not match",loc,locId_of_first_errand);
 
-				debug_assert("location at offset is wrong", loc, location_at_offset);
+				errandSchedule_t last_errand_at_offset = h_sorted_errands[loc_offset + loc_count - 1];
+				int hour_of_last_errand = get_hour_from_errandSchedule_t(last_errand_at_offset);
+				int locId_of_last_errand = get_location_from_errandSchedule_t(last_errand_at_offset);
 
-				int last_location_here = h_sorted_errands[loc_offset + loc_count - 1].second;
-				debug_assert("last location in table is wrong", loc, last_location_here);
+				debug_assert("location_offset_array: hour at offset[last] does not match",hour,hour_of_last_errand);
+				debug_assert("location_offset_array: locId at offset[last] does not match",loc,locId_of_last_errand);
 			}
 		}
 	}
@@ -768,8 +745,8 @@ void PandemicSim::debug_validateInfectionStatus()
 		int gen_p = h_people_gens_pandemic[myIdx];
 		int gen_s = h_people_gens_seasonal[myIdx];
 
-		bool active_p = status_p >= STATUS_INFECTED && status_p < STATUS_INFECTED + NUM_SHEDDING_PROFILES;
-		bool active_s = status_s >= STATUS_INFECTED && status_s < STATUS_INFECTED + NUM_SHEDDING_PROFILES;
+		bool active_p = status_is_infected(status_p) && get_profile_from_status(status_p) < NUM_SHEDDING_PROFILES;
+		bool active_s = status_is_infected(status_s) && get_profile_from_status(status_s) < NUM_SHEDDING_PROFILES;
 		bool found_in_infected = std::binary_search(h_infected_indexes.begin(), h_infected_indexes.begin() + infected_count, myIdx);
 
 		if(active_p || active_s)
@@ -792,7 +769,7 @@ void PandemicSim::debug_validateInfectionStatus()
 		}
 		else
 		{
-			debug_assert(status_p >= STATUS_INFECTED && status_p < STATUS_INFECTED + NUM_SHEDDING_PROFILES, "invalid status/profile code");
+			debug_assert(status_is_infected(status_p) && get_profile_from_status(status_p) < NUM_SHEDDING_PROFILES, "invalid pandemic status/profile code, person index", myIdx);
 
 			int profile_day = current_day - day_p;
 			debug_assert(profile_day >= 0 && profile_day < CULMINATION_PERIOD, "pandemic day is outside of valid range");
@@ -810,7 +787,7 @@ void PandemicSim::debug_validateInfectionStatus()
 		}
 		else
 		{
-			debug_assert(status_s >= STATUS_INFECTED && status_s < STATUS_INFECTED + NUM_SHEDDING_PROFILES, "invalid status/profile code");
+			debug_assert(status_is_infected(status_s) && get_profile_from_status(status_s) < NUM_SHEDDING_PROFILES, "invalid seasonal status/profile code, person");
 
 			int profile_day = current_day - day_s;
 			debug_assert(profile_day >= 0 && profile_day < CULMINATION_PERIOD, "seasonal day is outside of valid range");
@@ -884,8 +861,7 @@ void PandemicSim::debug_freshenErrands()
 	if(h_errand_data_freshness < current_day)
 	{
 		int infected_errands_to_copy = num_infected_errands_today();
-		thrust::copy_n(errand_infected_locations.begin(), infected_errands_to_copy, h_errand_infected_locations.begin());
-		thrust::copy_n(errand_infected_weekendHours.begin(), infected_errands_to_copy, h_errand_infected_weekendHours.begin());
+		thrust::copy_n(infected_errands.begin(),infected_errands_to_copy,h_infected_errands_array.begin());
 		thrust::copy_n(errand_infected_ContactsDesired.begin(), infected_count, h_errand_infected_contactsDesired.begin());
 
 		h_errand_data_freshness = current_day;
@@ -932,7 +908,7 @@ void PandemicSim::debug_validateActions()
 			debug_assert(y_p >= 0.f && y_p <= 1.0f, "y_p out of valid range, person", infector);
 			debug_assert(y_s >= 0.f && y_s <= 1.0f, "y_s out of valid range, person", infector);
 
-			if(infector_status_p >= STATUS_INFECTED && infector_day_p <= current_day)
+			if(status_is_infected(infector_status_p) && infector_day_p <= current_day)
 			{
 				debug_assert(inf_prob_p >= 0.f, "infector has pandemic but no chance of infection, infector ", infector);
 			}
@@ -942,7 +918,7 @@ void PandemicSim::debug_validateActions()
 				debug_assert(inf_prob_p <= 0.f, "infector does not have pandemic, but chance is > 0, infector ", infector);
 			}
 
-			if(infector_status_s >= STATUS_INFECTED && infector_day_s <= current_day)
+			if(status_is_infected(infector_status_s) && infector_day_s <= current_day)
 			{
 				debug_assert(inf_prob_s >= 0.f, "infector has seasonal but no chance of infection, infector ", infector);
 			}

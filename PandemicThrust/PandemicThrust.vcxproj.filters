@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="sql_logging.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PandemicSim.h">
@@ -30,6 +31,9 @@
       <Filter>Header files</Filter>
     </ClInclude>
     <ClInclude Include="resource_logging.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="sql_logging.h">
       <Filter>Header files</Filter>
     </ClInclude>
   </ItemGroup>

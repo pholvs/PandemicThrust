@@ -13,16 +13,13 @@ typedef unsigned char gen_t;
 typedef unsigned char errand_contacts_profile_t;
 typedef unsigned char kval_type_t;
 
+typedef int locId_t;
+typedef int locOffset_t;
+
+typedef int errandSchedule_t;
+typedef int maxContacts_t;  
+
 typedef int action_t;	//could be smaller, but only stored in validation mode
-
-typedef thrust::pair<int,int> schedulingPair_t;
-
-//unused
-typedef unsigned char max_contacts_t;  
-typedef unsigned char errandHour_t;
-typedef unsigned int locId_t;
-
-
 #define ACTION_INFECT_NONE 0
 #define ACTION_INFECT_SEASONAL 1
 #define ACTION_INFECT_PANDEMIC 2
@@ -34,17 +31,13 @@ typedef unsigned int status_t;
 #define STATUS_INFECTED 2
 #define STATUS_RECOVERED 0
 
-/*typedef int status_t;
-#define STATUS_SUSCEPTIBLE -1
-#define STATUS_INFECTED 0
-#define STATUS_RECOVERED -2*/
-
 //these null values will take val -1 if their type is signed, or MAX_VAL if it's unsigned
 #define DAY_NOT_INFECTED (day_t) -1
 #define GENERATION_NOT_INFECTED (gen_t) -1
 #define NULL_PERSON_INDEX (personId_t) -1
 #define AGE_NOT_SET (age_t) -1
 #define LOC_ID_NOT_SET (locId_t) -1
+#define NULL_ERRAND (errandSchedule_t) -1
 
 #define INITIAL_DAY 0
 #define INITIAL_GEN 0
