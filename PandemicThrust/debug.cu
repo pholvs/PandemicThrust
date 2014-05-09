@@ -24,6 +24,7 @@ int h_people_status_data_freshness = -2;
 thrust::host_vector<personId_t> h_contacts_infector;
 thrust::host_vector<personId_t> h_contacts_victim;
 thrust::host_vector<personId_t> h_contacts_kval;
+thrust::host_vector<errandSchedule_t> h_contacts_location;
 int h_contacts_freshness = -2;
 
 thrust::host_vector<action_t> h_action_types;
@@ -102,6 +103,7 @@ void PandemicSim::debug_sizeHostArrays()
 	h_contacts_infector.resize(daily_contact_infectors.size());
 	h_contacts_victim.resize(daily_contact_victims.size());
 	h_contacts_kval.resize(daily_contact_kval_types.size());
+	h_contacts_location.resize(daily_contact_locations.size());
 
 	h_action_types.resize(daily_action_type.size());
 
@@ -166,13 +168,15 @@ void PandemicSim::validateContacts_wholeDay()
 			int contact_infector = h_contacts_infector[contact_offset + contact];
 			int contact_victim = h_contacts_victim[contact_offset + contact];
 
+			errandSchedule_t contact_location = h_contacts_location[contact_offset + contact];
+
 			int locs_matched = 0;
 
 			//the following represent major errors and the resulting contact cannot be checked
 			bool abort_check = false;
 			if(contact_infector != infected_index)
 			{
-//				debug_print("error: contact_infector improperly set");
+				debug_print("error: contact_infector improperly set");
 				abort_check = true;
 			}
 			if(contact_infector < 0 || contact_infector >= number_people)
@@ -185,12 +189,25 @@ void PandemicSim::validateContacts_wholeDay()
 //				debug_print("contact_victim is out of range");
 				abort_check = true;
 			}
+
 			if(contact_type == CONTACT_TYPE_NONE)
 			{
-//				debug_assert(contact_victim == NULL_PERSON_INDEX, "null contact but victim index is set");
+				if(contact_location == NULL_ERRAND)
+				{
+					debug_assert("nulled contact, but victim is not null", NULL_PERSON_INDEX, contact_victim);
+				}
+				else
+				{
+					int loc_count = contact_victim;
+					debug_assert("infector wasn't alone at location, but failed to make contacts, loc_count",1,loc_count);
+					
+					contact_victim = -1;
+				}
+
 				locs_matched = 1;
 				abort_check = true;
 			}
+
 
 			int infector_loc = -1;
 			int victim_loc = -1;
@@ -205,10 +222,14 @@ void PandemicSim::validateContacts_wholeDay()
 				{
 					infector_loc = h_people_workplaces[contact_infector];
 					victim_loc = h_people_workplaces[contact_victim];
+
 					locs_matched = (infector_loc == victim_loc);
 
-					//individuals must be adults
+					//infector must be adults
 					debug_assert(infector_age == AGE_ADULT, "work-type contact but infector is a child, infector",infected_index);
+
+					//contact_loc and infector_loc must match
+					debug_assert(contact_location == infector_loc, "workplace contact: contact_location does not match infector location, person",infected_index);
 
 					//infector location must be valid
 					debug_assert(infector_loc >= 0 && infector_loc < number_workplaces, "infector location out of bounds in workplace contact, infector",infected_index);
@@ -234,6 +255,9 @@ void PandemicSim::validateContacts_wholeDay()
 					//infector must be a child
 					debug_assert(infector_age != AGE_ADULT, "school-type contact but infector is an adult, infector",infected_index);
 
+					//the contact must take place at the infector_loc
+					debug_assert(contact_location == infector_loc, "school contact: contact does not take place at infector's school, person",infected_index);
+
 					//the location must be a valid location that is a school
 					debug_assert(infector_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_PRESCHOOL] && infector_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_UNIVERSITY+1], "infector loc for school contact is not school locationtype, infector",infected_index);
 					debug_assert(victim_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_PRESCHOOL] && victim_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_UNIVERSITY+1], "victim loc for school contact is not school locationtype, infector",infected_index);
@@ -257,40 +281,38 @@ void PandemicSim::validateContacts_wholeDay()
 
 						int vic_hour_arr[NUM_WEEKEND_ERRANDS];
 						int vic_loc_arr[NUM_WEEKEND_ERRANDS];
+
 						//iterate errands
 						for(int infector_errand = 0; infector_errand < NUM_WEEKEND_ERRANDS && locs_matched == 0; infector_errand++)
 						{
-
 							//fish out the infector's errand
 							int inf_errand_lookup_offset = (infected_index * NUM_WEEKEND_ERRANDS) + infector_errand;
+							errandSchedule_t errand = h_people_errands[inf_errand_lookup_offset];
 
-							int infector_errand_loc = h_people_errands[inf_errand_lookup_offset] % number_workplaces;
-							int infector_errand_hour = h_people_errands[inf_errand_lookup_offset] / number_workplaces;
+							inf_hour_arr[infector_errand] = get_hour_from_errandSchedule_t(errand);
+							inf_loc_arr[infector_errand] = get_location_from_errandSchedule_t(errand);
 
-							inf_hour_arr[infector_errand] = infector_errand_hour;
-							inf_loc_arr[infector_errand] = infector_errand_loc;
-
-							//iterate victim errands
-							for(int victim_errand = 0; victim_errand < NUM_WEEKEND_ERRANDS && locs_matched == 0; victim_errand++)
-							{
-								//fish out victim's errand
-								int victim_errand_lookup_offset = (contact_victim * NUM_WEEKEND_ERRANDS) + victim_errand;
-								int victim_errand_loc = h_people_errands[victim_errand_lookup_offset] % number_workplaces;
-								int victim_errand_hour = h_people_errands[victim_errand_lookup_offset] / number_workplaces;
-
-
-								vic_hour_arr[victim_errand] = victim_errand_hour;
-								vic_loc_arr[victim_errand] = victim_errand_loc;
-
-								//if the infector and victim locations and hours match, save and break
-								if(infector_errand_loc == victim_errand_loc && infector_errand_hour == victim_errand_hour)
-								{
-									locs_matched = 1;
-									infector_loc = infector_errand_loc;
-									victim_loc = victim_errand_loc;
-								}
-							}
+							if(errand == contact_location)
+								infector_loc = get_location_from_errandSchedule_t(errand);
 						}
+
+						//iterate victim errands
+						for(int victim_errand = 0; victim_errand < NUM_WEEKEND_ERRANDS && locs_matched == 0; victim_errand++)
+						{
+							//fish out victim's errand
+							int victim_errand_lookup_offset = (contact_victim * NUM_WEEKEND_ERRANDS) + victim_errand;
+							errandSchedule_t errand = h_people_errands[victim_errand_lookup_offset];
+
+							vic_hour_arr[victim_errand] = get_hour_from_errandSchedule_t(errand);
+							vic_loc_arr[victim_errand] = get_location_from_errandSchedule_t(errand);
+
+							if(errand == contact_location)
+								victim_loc = get_location_from_errandSchedule_t(errand);
+						}
+
+						if(infector_loc >= 0 && victim_loc >= 0 && infector_loc == victim_loc)
+							locs_matched = 1;
+
 
 						if(!locs_matched)
 							printf("");
@@ -355,6 +377,9 @@ void PandemicSim::validateContacts_wholeDay()
 					debug_assert(infector_age != AGE_ADULT, "afterschool contact but infector is an adult, infector",infected_index);
 					debug_assert(victim_age != AGE_ADULT, "afterschool contact but victim is an adult, victim", contact_victim);
 
+					//contact must be at infector's afterschool loc
+					debug_assert(contact_location == infector_loc, "contact is not at infector's scheduled afterschool, infector",infected_index);
+
 					//location must be valid and location_type == AFTERSCHOOL
 					debug_assert(infector_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL] && infector_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL + 1], "infector afterschool destination is not afterschool location type, infector", infected_index);
 					debug_assert(victim_loc >= WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL] && victim_loc < WORKPLACE_TYPE_OFFSET_HOST[BUSINESS_TYPE_AFTERSCHOOL + 1], "victim afterschool destination is not afterschool location type, infector", infected_index);
@@ -372,6 +397,9 @@ void PandemicSim::validateContacts_wholeDay()
 					victim_loc = h_people_households[contact_victim];
 					locs_matched = (infector_loc == victim_loc);
 
+					//contact must be at infector's household
+					debug_assert(contact_location == infector_loc, "household contact not at infector's household, infector",infected_index);
+
 					//locations must be valid household indexes
 					debug_assert(infector_loc >= 0 && infector_loc < number_households, "infector household index out of range, infector",infected_index);
 					debug_assert(victim_loc >= 0 && victim_loc < number_households, "victim household index out of range, infector",infected_index);
@@ -383,10 +411,10 @@ void PandemicSim::validateContacts_wholeDay()
 					debug_print("error: invalid contact type");
 			}
 			if(log_contacts)
-				fprintf(fContacts,"%d,%d,%d,%d,%s,%d,%d,%d\n",
+				fprintf(fContacts,"%d,%d,%d,%d,%s,%d,%d,%d,%d\n",
 					current_day, contact_offset + contact, 
 					contact_infector, contact_victim, lookup_contact_type(contact_type),
-					infector_loc, victim_loc, locs_matched);
+					contact_location, infector_loc, victim_loc, locs_matched);
 		}
 	}
 	if(log_contacts)
@@ -836,6 +864,7 @@ void PandemicSim::debug_freshenContacts()
 		thrust::copy_n(daily_contact_infectors.begin(), num_contacts, h_contacts_infector.begin());
 		thrust::copy_n(daily_contact_victims.begin(), num_contacts, h_contacts_victim.begin());
 		thrust::copy_n(daily_contact_kval_types.begin(), num_contacts, h_contacts_kval.begin());
+		thrust::copy_n(daily_contact_locations.begin(), num_contacts, h_contacts_location.begin());
 
 		h_contacts_freshness = current_day;
 	}

@@ -31,7 +31,7 @@
 #endif
 
 #define FLUSH_VALIDATION_IMMEDIATELY 0
-#define log_contacts 1
+#define log_contacts 0
 #define log_infected_info 0
 #define log_location_info 0
 #define log_actions 0
@@ -142,8 +142,8 @@ public:
 	personId_t * daily_contact_victims_ptr;
 	thrust::device_vector<kval_type_t> daily_contact_kval_types;
 	kval_type_t * daily_contact_kval_types_ptr;
-//	thrust::device_vector<errandSchedule_t> daily_contact_locations;
-//	errandSchedule_t * daily_contact_locations_ptr;
+	thrust::device_vector<errandSchedule_t> daily_contact_locations;
+	errandSchedule_t * daily_contact_locations_ptr;
 
 
 	thrust::device_vector<action_t> daily_action_type;
@@ -366,16 +366,18 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 										 errand_contacts_profile_t * errand_contacts_profile_arr, errandSchedule_t * infected_errands_array,
 										 locOffset_t * errand_loc_offsets, personId_t * errand_people,
 										 int number_locations, 
-										 personId_t * output_infector_arr, personId_t * output_victim_arr, kval_type_t * output_kval_arr,
-										 action_t * output_action_arr,
-										 //errandSchedule_t * output_contact_loc_arr,
 										 status_t * people_status_p_arr, status_t * people_status_s_arr,
 										 day_t * people_days_pandemic, day_t * people_days_seasonal,
 										 gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
+#if SIM_VALIDATION == 1
+										 personId_t * output_infector_arr, personId_t * output_victim_arr,
+										 kval_type_t * output_kval_arr,  action_t * output_action_arr, 
+										 errandSchedule_t * output_contact_loc_arr,
 										 float * float_rand1, float * float_rand2,
 										 float * float_rand3, float * float_rand4,
-										 day_t current_day,
-										 randOffset_t rand_offset);
+#endif
+										 day_t current_day,randOffset_t rand_offset);
+
 __device__ kval_t device_makeContacts_weekday(
 	personId_t myIdx, errand_contacts_profile_t errand_contacts_profile,
 	int myPos,
@@ -386,6 +388,9 @@ __device__ kval_t device_makeContacts_weekday(
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	int number_locations,
 	personId_t * output_victim_arr, kval_type_t * output_kval_arr,
+#if SIM_VALIDATION == 1
+	errandSchedule_t * output_contact_location,
+#endif
 	randOffset_t myRandOffset);
 
 __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
@@ -393,22 +398,27 @@ __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected
 										 errandSchedule_t * infected_errand_array,
 										 locOffset_t * errand_loc_offsets, personId_t * errand_people,
 										 int number_locations, 
-										 personId_t * output_infector_arr, personId_t * output_victim_arr, kval_type_t * output_kval_arr,
-										 action_t * output_action_arr,
 										 status_t * people_status_p_arr, status_t * people_status_s_arr,
 										 day_t * people_days_pandemic, day_t * people_days_seasonal,
 										 gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
+#if SIM_VALIDATION == 1
+										 personId_t * output_infector_arr, personId_t * output_victim_arr, 
+										 kval_type_t * output_kval_arr, action_t * output_action_arr,
+										 errandSchedule_t * output_contact_location_arr,
 										 float * float_rand1, float * float_rand2,
 										 float * float_rand3, float * float_rand4,
-										 day_t current_day,
-										 randOffset_t rand_offset);
+#endif
+										 day_t current_day,  randOffset_t rand_offset);
 
 __device__ kval_t device_makeContacts_weekend(personId_t myIdx, int myPos,
 											  locId_t * household_lookup, locOffset_t * household_offsets, // personId_t * household_people,
-											  errandSchedule_t * infected_errands_array,
+											  errandSchedule_t * infected_errand_array,
 											  locOffset_t * errand_loc_offsets, personId_t * errand_people,
 											  int number_locations,
 											  personId_t * output_victim_ptr, kval_type_t * output_kval_ptr,
+#if SIM_VALIDATION == 1
+											  errandSchedule_t * output_contact_loc_ptr,
+#endif
 											  randOffset_t myRandOffset);
 
 __device__ int device_setInfectionStatus(status_t profile_to_set, day_t day_to_set, gen_t gen_to_set,
@@ -427,10 +437,11 @@ __device__ void device_doContactsToActions_immediately(
 	status_t * people_status_p_arr, status_t * people_status_s_arr,
 	day_t * people_days_pandemic, day_t * people_days_seasonal,
 	gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
+#if SIM_VALIDATION == 1
 	action_t * output_action_arr,
 	float * rand_arr_1, float * rand_arr_2, float * rand_arr_3, float * rand_arr_4,
-	day_t current_day,
-	randOffset_t myRandOffset);
+#endif
+	day_t current_day,randOffset_t myRandOffset);
 
 __device__ errandSchedule_t device_lookupErrandObject_multiHour(int myPos, int errand_slot, int number_errands, errandSchedule_t * infected_errand_arr);
 

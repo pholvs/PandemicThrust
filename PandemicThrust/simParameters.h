@@ -35,8 +35,8 @@ typedef unsigned int status_t;
 #define DAY_NOT_INFECTED (day_t) -1
 #define GENERATION_NOT_INFECTED (gen_t) -1
 #define NULL_PERSON_INDEX (personId_t) -1
-#define AGE_NOT_SET (age_t) -1
-#define LOC_ID_NOT_SET (locId_t) -1
+#define NULL_AGE (age_t) -1
+#define NULL_LOC_ID (locId_t) -1
 #define NULL_ERRAND (errandSchedule_t) -1
 
 #define INITIAL_DAY 0
