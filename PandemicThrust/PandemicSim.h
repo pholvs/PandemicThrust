@@ -97,7 +97,8 @@ public:
 
 	void debug_nullFillDailyArrays();
 
-	float sim_scaling_factor;
+	float people_scaling_factor;
+	float location_scaling_factor;
 	float asymp_factor;
 
 	int number_people;

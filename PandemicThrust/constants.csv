@@ -1,2 +1,2 @@
-constants,max_days,reproduction_number_pandemic,reproduction_number_seasonal,initial_infected_pandemic,initial_infected_seasonal,sim_scaling_factor,percent_symptomatic,asymp_factor
-constants,25,1.8,1.3,30,30,0.1,1,0
+constants,max_days,reproduction_number_pandemic,reproduction_number_seasonal,initial_infected_pandemic,initial_infected_seasonal,people_scaling_factor,location_scaling_factor,percent_symptomatic,asymp_factor
+constants,100,1.8,1.3,30,30,1,1,1,0

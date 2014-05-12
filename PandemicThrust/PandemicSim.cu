@@ -108,6 +108,8 @@ PandemicSim::PandemicSim()
 	setup_scaleSimulation();
 	setup_calculateInfectionData();
 
+	logging_setSimScale(people_scaling_factor,location_scaling_factor);
+
 	//copy everything down to the GPU
 	setup_pushDeviceData();
 
@@ -285,7 +287,8 @@ void PandemicSim::setup_loadParameters()
 	fscanf(fConstants, "%f%*c", &BASE_R_SEASONAL_HOST);
 	fscanf(fConstants, "%d%*c", &INITIAL_INFECTED_PANDEMIC);
 	fscanf(fConstants, "%d%*c", &INITIAL_INFECTED_SEASONAL);
-	fscanf(fConstants, "%f%*c", &sim_scaling_factor);
+	fscanf(fConstants, "%f%*c", &people_scaling_factor);
+	fscanf(fConstants, "%f%*c", &location_scaling_factor);
 	fscanf(fConstants, "%f%*c", PERCENT_SYMPTOMATIC_HOST);
 	fscanf(fConstants, "%f", &asymp_factor);
 	fclose(fConstants);
@@ -1120,14 +1123,14 @@ void PandemicSim::setup_scaleSimulation()
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"setup_scaleSimulation");
 
-	number_households = roundHalfUp_toInt(sim_scaling_factor * (double) number_households);
+	number_households = roundHalfUp_toInt(people_scaling_factor * (double) number_households);
 
 	int sum = 0;
 	for(int business_type = 0; business_type < NUM_BUSINESS_TYPES; business_type++)
 	{
 		//for each type of business, scale by overall simulation scalar
 		int original_type_count = roundHalfUp_toInt(WORKPLACE_TYPE_COUNT_HOST[business_type]);
-		int new_type_count = roundHalfUp_toInt(sim_scaling_factor * original_type_count);
+		int new_type_count = roundHalfUp_toInt(location_scaling_factor * original_type_count);
 
 		//if at least one business of this type existed in the original data, make sure at least one exists in the new data
 		if(new_type_count == 0 && original_type_count > 0)

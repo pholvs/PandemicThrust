@@ -14,6 +14,8 @@ size_t max_memory_used = 0;
 
 cudaEvent_t event_start, event_stop;
 
+float p_scale=0.f, l_scale=0.f;
+
 void logging_pollMemUsage_doSetup(bool log_memory_usage, bool outputFilesInParentDir)
 {
 	//create events
@@ -81,14 +83,14 @@ void logging_pollMemoryUsage_done()
 
 
 	FILE * fResourceLog = fopen("output_resource_log.csv", "w");
-	fprintf(fResourceLog, "runtime_milliseconds,runtime_seconds,bytes_used,megabytes_used\n");
+	fprintf(fResourceLog, "people_sim_scale,location_sim_scale,runtime_milliseconds,runtime_seconds,bytes_used,megabytes_used\n");
 
 	if(VISUAL_STUDIO)
-		fprintf(fResourceLog,"%f,%f,%Iu,%Iu\n",
-			elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
+		fprintf(fResourceLog,"%f,%f,%f,%f,%Iu,%Iu\n",
+			p_scale,l_scale,elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
 	else
-		fprintf(fResourceLog, "%f,%f,%zu,%zu\n",
-			elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
+		fprintf(fResourceLog, "%f,%f,%f,%f,%zu,%zu\n",
+			p_scale,l_scale,elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
 	fclose(fResourceLog);
 
 
@@ -97,4 +99,11 @@ void logging_pollMemoryUsage_done()
 
 	cudaEventDestroy(event_start);
 	cudaEventDestroy(event_stop);
+}
+
+void logging_setSimScale(float people_scale, float loc_scale)
+{
+	p_scale = people_scale;
+	l_scale = loc_scale;
+
 }
