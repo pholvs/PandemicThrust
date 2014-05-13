@@ -324,14 +324,14 @@ __device__ float device_calculateInfectionProbability(int profile, int day_of_in
 __device__ void device_checkActionAndWrite(bool infects_pandemic, bool infects_seasonal, personId_t victim, status_t * pandemic_status_arr, status_t * seasonal_status_arr, int * dest_ptr);
 
 //initial setup methods
-__global__ void kernel_householdTypeAssignment(int * hh_type_array, int num_households, int rand_offset);
+__global__ void kernel_householdTypeAssignment(householdType_t * hh_type_array, int num_households, randOffset_t rand_offset);
 __device__ int device_setup_fishHouseholdType(unsigned int rand_val);
 
 __global__ void kernel_generateHouseholds(
-	int * hh_type_array, int * adult_exscan_arr, 
-	int * child_exscan_arr, int num_households,
-	int * household_offset_arr,
-	age_t * people_age_arr, int * people_households_arr, int * people_workplaces_arr,
+	householdType_t * hh_type_array, 
+	int * adult_exscan_arr, int * child_exscan_arr, int num_households,
+	locOffset_t * household_offset_arr,
+	age_t * people_age_arr, locId_t * people_households_arr, locId_t * people_workplaces_arr,
 	randOffset_t rand_offset);
 __device__ int device_setup_fishWorkplace(unsigned int rand_val);
 __device__ void device_setup_fishSchoolAndAge(unsigned int rand_val, age_t * output_age_ptr, int * output_school_ptr);

@@ -2426,7 +2426,7 @@ __device__ float device_calculateInfectionProbability(int profile, int day_of_in
 }
 
 
-__global__ void kernel_householdTypeAssignment(int * hh_type_array, int num_households, randOffset_t rand_offset)
+__global__ void kernel_householdTypeAssignment(householdType_t * hh_type_array, int num_households, randOffset_t rand_offset)
 {
 	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
 	union{
@@ -2532,8 +2532,8 @@ __device__ void device_setup_fishSchoolAndAge(unsigned int rand_val, age_t * out
 
 
 __global__ void kernel_generateHouseholds(
-	int * hh_type_array, int * adult_exscan_arr, 
-	int * child_exscan_arr, int num_households, 
+	householdType_t * hh_type_array, 
+	int * adult_exscan_arr, int * child_exscan_arr, int num_households, 
 	locOffset_t * household_offset_arr,
 	age_t * people_age_arr, locId_t * people_households_arr, locId_t * people_workplaces_arr, randOffset_t rand_offset)
 {
@@ -2615,8 +2615,8 @@ void PandemicSim::setup_generateHouseholds()
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"setup_generateHouseholds");
 
-	d_vec hh_types_array(number_households+1);
-	int * hh_types_array_ptr = thrust::raw_pointer_cast(hh_types_array.data());
+	thrust::device_vector<householdType_t> hh_types_array(number_households+1);
+	householdType_t * hh_types_array_ptr = thrust::raw_pointer_cast(hh_types_array.data());
 
 	//finish copydown of __constant__ sim data
 	cudaDeviceSynchronize();
@@ -2633,8 +2633,8 @@ void PandemicSim::setup_generateHouseholds()
 		rand_offset += rand_counts_consumed_1;
 	}
 
-	d_vec adult_count_exclScan(number_households+1);
-	d_vec child_count_exclScan(number_households+1);
+	thrust::device_vector<int> adult_count_exclScan(number_households+1);
+	thrust::device_vector<int> child_count_exclScan(number_households+1);
 
 	//these count_functors convert household types into the number of children/adults in that type
 	//use a transform-functor to convert the HH types and take an exclusive_scan of each
@@ -2672,8 +2672,8 @@ void PandemicSim::setup_generateHouseholds()
 	if(SIM_VALIDATION)
 	{
 		thrust::fill_n(people_ages.begin(), number_people, NULL_AGE);
-		thrust::fill_n(people_households.begin(), number_people, -1);
-		thrust::fill_n(people_workplaces.begin(), number_people, -1);
+		thrust::fill_n(people_households.begin(), number_people, NULL_LOC_ID);
+		thrust::fill_n(people_workplaces.begin(), number_people, NULL_LOC_ID);
 
 		thrust::fill_n(household_offsets.begin(), number_households, -1);
 	}

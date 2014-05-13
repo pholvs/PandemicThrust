@@ -5,6 +5,7 @@
 typedef unsigned long randOffset_t;
 
 typedef int personId_t;
+typedef unsigned char householdType_t;
 
 typedef unsigned char age_t;
 typedef unsigned char day_t;
