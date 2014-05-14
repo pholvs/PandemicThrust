@@ -176,8 +176,8 @@ public:
 	thrust::device_vector<errandSchedule_t> infected_errands;
 	errandSchedule_t * infected_errands_ptr;
 
-	thrust::device_vector<errand_contacts_profile_t> errand_infected_ContactsDesired;		//how many contacts are desired on a given errand
-	errand_contacts_profile_t * errand_infected_ContactsDesired_ptr;
+	thrust::device_vector<errandContactsProfile_t> errand_infected_ContactsDesired;		//how many contacts are desired on a given errand
+	errandContactsProfile_t * errand_infected_ContactsDesired_ptr;
 
 	thrust::device_vector<locOffset_t> errand_locationOffsets;
 	locOffset_t * errand_locationOffsets_ptr;
@@ -228,7 +228,6 @@ public:
 	void debug_dump_array_toTempFile(const char * filename, const char * description, d_vec * array, int count);
 
 	void debug_clearActionsArray();
-
 
 
 	d_vec status_counts;
@@ -301,9 +300,9 @@ __device__ void device_assignAfterschoolOrErrandDests_weekday(unsigned int rand_
 __device__ errandSchedule_t device_fishAfterschoolOrErrandDestination_weekday(unsigned int rand_val, age_t myAge);
 
 //weekday infected setup
-__global__ void kernel_doInfectedSetup_weekday_wholeDay(personId_t * infected_index_arr, int num_infected, errandSchedule_t * errand_scheduling_array, age_t * ages_lookup_arr, int num_people, errandSchedule_t * infected_errands_array, errand_contacts_profile_t * output_infected_contacts_desired, randOffset_t rand_offset);
-__device__ void device_doAllWeekdayInfectedSetup(unsigned int rand_val, int myPos, personId_t * infected_indexes_arr, errandSchedule_t * errand_scheduling_array, age_t * ages_lookup_arr, int num_people, errandSchedule_t * infected_errands_array, errand_contacts_profile_t * output_infected_contacts_desired);
-__device__ errand_contacts_profile_t device_assignContactsDesired_weekday_wholeDay(unsigned int rand_val, age_t myAge);
+__global__ void kernel_doInfectedSetup_weekday_wholeDay(personId_t * infected_index_arr, int num_infected, errandSchedule_t * errand_scheduling_array, age_t * ages_lookup_arr, int num_people, errandSchedule_t * infected_errands_array, errandContactsProfile_t * output_infected_contacts_desired, randOffset_t rand_offset);
+__device__ void device_doAllWeekdayInfectedSetup(unsigned int rand_val, int myPos, personId_t * infected_indexes_arr, errandSchedule_t * errand_scheduling_array, age_t * ages_lookup_arr, int num_people, errandSchedule_t * infected_errands_array, errandContactsProfile_t * output_infected_contacts_desired);
+__device__ errandContactsProfile_t device_assignContactsDesired_weekday_wholeDay(unsigned int rand_val, age_t myAge);
 __device__ void device_copyInfectedErrandLocs_weekday(errandSchedule_t * errand_lookup_ptr,  errandSchedule_t * infected_errand_ptr, int num_people);
 
 //weekend errand assignment
@@ -351,7 +350,7 @@ char * profile_int_to_string(int p);
 
 const char * lookup_contact_type(int contact_type);
 const char * lookup_workplace_type(int workplace_type);
-const char * lookup_age_type(int age_type);
+const char * lookup_age_type(age_t age_type);
 
 void debug_print(char * message);
 void debug_assert(bool condition, char * message);
@@ -369,7 +368,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 										 locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
 										 maxContacts_t * workplace_max_contacts, locId_t * workplace_lookup, 
 										 locOffset_t * workplace_offsets, personId_t * workplace_people,
-										 errand_contacts_profile_t * errand_contacts_profile_arr, errandSchedule_t * infected_errands_array,
+										 errandContactsProfile_t * errand_contacts_profile_arr, errandSchedule_t * infected_errands_array,
 										 locOffset_t * errand_loc_offsets, personId_t * errand_people,
 										 int number_locations, 
 										 status_t * people_status_p_arr, status_t * people_status_s_arr,
@@ -385,7 +384,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 										 day_t current_day,randOffset_t rand_offset);
 
 __device__ kval_t device_makeContacts_weekday(
-	personId_t myIdx, errand_contacts_profile_t errand_contacts_profile,
+	personId_t myIdx, errandContactsProfile_t errand_contacts_profile,
 	int myPos,
 	locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
 	maxContacts_t * workplace_max_contacts, locId_t * workplace_lookup,

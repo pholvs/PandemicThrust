@@ -11,7 +11,7 @@ typedef unsigned char age_t;
 typedef unsigned char day_t;
 typedef unsigned char gen_t;
 
-typedef unsigned char errand_contacts_profile_t;
+typedef unsigned char errandContactsProfile_t;
 typedef unsigned char kval_type_t;
 
 typedef int locId_t;

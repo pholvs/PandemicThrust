@@ -37,7 +37,7 @@ int errand_lookup_freshness = -2;
 
 thrust::host_vector<personId_t> h_errand_people_table;
 thrust::host_vector<errandSchedule_t> h_infected_errands_array;
-thrust::host_vector<errand_contacts_profile_t> h_errand_infected_contactsDesired;
+thrust::host_vector<errandContactsProfile_t> h_errand_infected_contactsDesired;
 h_vec h_errand_locationOffsets_multiHour;
 int h_errand_data_freshness = -2;
 
