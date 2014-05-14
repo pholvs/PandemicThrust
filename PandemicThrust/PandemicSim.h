@@ -15,7 +15,7 @@
 #define COUNTING_GRID_BLOCKS 32
 #define COUNTING_GRID_THREADS 256
 
-#define CONSOLE_OUTPUT 1
+#define CONSOLE_OUTPUT 0
 #define TIMING_BATCH_MODE 0
 #define OUTPUT_FILES_IN_PARENTDIR 0
 #define POLL_MEMORY_USAGE 0
@@ -39,6 +39,14 @@
 #define log_people_info 0
 
 #define LOG_INFECTED_PROPORTION 1
+
+//if CALC_NUM_PEOPLE_FIRST==1, the household types will be generated twice.  
+//The first time will find the total population of the sim using a transform-reduce.
+//Then memory will be allocated for the global arrays, and the households will actually be generated
+//This means we use more processing but avoid potential fragmentation
+//If ==0, then global memory must be allocated to store the household types and the exclusive-scans
+//This space will be allocated before the global arrays can be sized, and it can cause fragmentation
+#define CALC_NUM_PEOPLE_FIRST 1	
 
 //low overhead
 #define debug_log_function_calls 0
@@ -73,6 +81,7 @@ public:
 
 	void setup_calculateInfectionData();
 	void setup_generateHouseholds();
+	void setup_assignWorkplaces();
 	int setup_calcPopulationSize();
 	int setup_calcPopulationSize_thrust();
 	void setup_initializeStatusArrays();
@@ -260,6 +269,11 @@ public:
 	//TO REMOVE:
 	void debug_validateActions();
 	void doInitialInfections_statusWord();
+
+	void debug_testErrandRegen_weekday();
+	void debug_testErrandRegen_weekend();
+
+	void debug_testWorkplaceAssignmentFunctor();
 };
 
 #define day_of_week() (current_day % 7)
@@ -335,7 +349,7 @@ __global__ void kernel_generateHouseholds(
 	householdType_t * hh_type_array, 
 	int * adult_exscan_arr, int * child_exscan_arr, int num_households,
 	locOffset_t * household_offset_arr,
-	age_t * people_age_arr, locId_t * people_households_arr, locId_t * people_workplaces_arr,
+	age_t * people_age_arr, locId_t * people_households_arr,
 	randOffset_t rand_offset);
 __device__ int device_setup_fishWorkplace(unsigned int rand_val);
 __device__ void device_setup_fishSchoolAndAge(unsigned int rand_val, age_t * output_age_ptr, int * output_school_ptr);
@@ -449,10 +463,16 @@ __device__ void device_doContactsToActions_immediately(
 	day_t current_day,randOffset_t myRandOffset);
 
 __device__ errandSchedule_t device_lookupErrandObject_multiHour(int myPos, int errand_slot, int number_errands, errandSchedule_t * infected_errand_arr);
-
-
-
 __device__ maxContacts_t device_getWorkplaceMaxContacts(errandSchedule_t errand, int number_locations);
+
+__device__ errandContactsProfile_t device_recalc_weekdayErrandDests_assignProfile(
+	personId_t myIdx, age_t myAge, 
+	int num_locations, randOffset_t old_rand_offset,
+	errandSchedule_t * output_dest1, errandSchedule_t * output_dest2);
+__device__ void device_recalc_weekendErrandDests(personId_t myIdx, int num_locations,randOffset_t old_rand_offset,errandSchedule_t * errand_array_ptr);
+
+__device__ void device_setup_assignWorkplaceOrSchool(unsigned int rand_val, age_t * age_ptr,locId_t * workplace_ptr);
+__global__ void kernel_assignWorkplaces(age_t * people_ages_arr, locId_t * people_workplaces_arr, int number_people, randOffset_t rand_offset);
 
 //currently unused
 struct personStatusStruct_t{

@@ -9,6 +9,8 @@
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/scan.h>
 #include <stdexcept>
+#include <thrust/for_each.h>
+#include <thrust/execution_policy.h>
 
 
 int cuda_blocks = 32;
@@ -85,8 +87,39 @@ __device__ __constant__ int HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[HH_TABLE_ROWS];
 int HOUSEHOLD_TYPE_CHILD_COUNT_HOST[HH_TABLE_ROWS];
 __device__ __constant__ int HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[HH_TABLE_ROWS];
 
+__device__ __constant__ randOffset_t workplace_setup_randOffset[1];
+__device__ __constant__ int const_number_people[1];
+__device__ __constant__ int const_number_workplaces[1];
+__device__ __constant__ int const_number_households[1];
+
+__device__ __constant__ status_t * const_people_status_pandemic[1];
+__device__ __constant__ status_t * const_people_status_seasonal[1];
+__device__ __constant__ day_t * const_people_days_pandemic[1];
+__device__ __constant__ day_t * const_people_days_seasonal[1];
+__device__ __constant__ gen_t * const_people_gens_pandemic[1];
+__device__ __constant__ gen_t * const_people_gens_seasonal[1];
+
+__device__ __constant__ age_t * const_people_ages[1];
+__device__ __constant__ locId_t * const_people_workplaces[1];
+__device__ __constant__ locId_t * const_people_households[1];
+
+__device__ __constant__ locOffset_t * const_workplace_offsets[1];
+__device__ __constant__ personId_t * const_workplace_people[1];
+
+__device__ __constant__ locOffset_t * const_household_offsets[1];
+
+__device__ __constant__ errandSchedule_t * const_people_errands[1];
+__device__ __constant__ personId_t * const_errand_people_table[1];
+__device__ __constant__ locOffset_t * const_errand_locationOffsets[1];
+
+
 PandemicSim::PandemicSim() 
 {
+	//age adult must not be zero, since we use that as a flag for being a child to generate households
+	if(AGE_ADULT == 0)
+		throw;
+
+
 	logging_openOutputStreams();
 
 	if(SIM_PROFILING)
@@ -1214,7 +1247,13 @@ void PandemicSim::doWeekday_wholeDay()
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
 	if(SIM_VALIDATION)
+	{
 		debug_copyErrandLookup();	//debug: copy the lookup tables to host memory before they are sorted
+		debug_testErrandRegen_weekday();
+	}
+
+
+
 
 	//generate location arrays for each hour
 	for(int hour = 0; hour < NUM_WEEKDAY_ERRAND_HOURS; hour++)
@@ -2557,12 +2596,22 @@ __device__ void device_setup_fishSchoolAndAge(unsigned int rand_val, age_t * out
 	*output_age_ptr = myAge;
 }
 
+__device__ void device_setup_assignWorkplaceOrSchool(unsigned int rand_val, age_t * age_ptr,locId_t * workplace_ptr)
+{
+	age_t myAge = *age_ptr;
 
-__global__ void kernel_generateHouseholds(
-	householdType_t * hh_type_array, 
-	int * adult_exscan_arr, int * child_exscan_arr, int num_households, 
-	locOffset_t * household_offset_arr,
-	age_t * people_age_arr, locId_t * people_households_arr, locId_t * people_workplaces_arr, randOffset_t rand_offset)
+	if(myAge == AGE_ADULT)
+	{
+		workplace_ptr[0] = device_setup_fishWorkplace(rand_val);
+	}
+	else
+	{
+		device_setup_fishSchoolAndAge(rand_val,age_ptr,workplace_ptr);
+	}
+}
+
+
+__global__ void kernel_assignWorkplaces(age_t * people_ages_arr, locId_t * people_workplaces_arr, int number_people, randOffset_t rand_offset)
 {
 	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
 	union{
@@ -2570,7 +2619,32 @@ __global__ void kernel_generateHouseholds(
 		unsigned int i[4];
 	} rand_union;
 
-	const int rand_counts_consumed = 2;
+	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <= number_people/4; myGridPos += gridDim.x * blockDim.x)
+	{
+		//get random numbers
+		randOffset_t myRandOffset = rand_offset + myGridPos;
+		threefry2x64_ctr_t tf_ctr_1 = {{myRandOffset, myRandOffset}};
+		rand_union.c = threefry2x64(tf_ctr_1, tf_k);
+
+		int myPos = myGridPos * 4;
+
+		if(myPos < number_people)
+			device_setup_assignWorkplaceOrSchool(rand_union.i[0],people_ages_arr + myPos + 0, people_workplaces_arr + myPos + 0);
+		if(myPos + 1 < number_people)
+			device_setup_assignWorkplaceOrSchool(rand_union.i[1],people_ages_arr + myPos + 1, people_workplaces_arr + myPos + 1);
+		if(myPos + 2 < number_people)
+			device_setup_assignWorkplaceOrSchool(rand_union.i[2],people_ages_arr + myPos + 2, people_workplaces_arr + myPos + 2);
+		if(myPos + 3 < number_people)
+			device_setup_assignWorkplaceOrSchool(rand_union.i[3],people_ages_arr + myPos + 3, people_workplaces_arr + myPos + 3);
+	}
+}
+
+__global__ void kernel_generateHouseholds(
+	householdType_t * hh_type_array, 
+	int * adult_exscan_arr, int * child_exscan_arr, int num_households, 
+	locOffset_t * household_offset_arr,
+	age_t * people_age_arr, locId_t * people_households_arr)
+{
 
 	for(int hh = blockIdx.x * blockDim.x + threadIdx.x;  hh < num_households ; hh += gridDim.x * blockDim.x)
 	{
@@ -2584,23 +2658,13 @@ __global__ void kernel_generateHouseholds(
 		int hh_offset = adults_offset + children_offset;
 		household_offset_arr[hh] = hh_offset;
 
-		//get random numbers
-		randOffset_t myRandOffset = rand_offset + (hh * rand_counts_consumed);
-		threefry2x64_ctr_t tf_ctr_1 = {{myRandOffset, myRandOffset}};
-		rand_union.c = threefry2x64(tf_ctr_1, tf_k);
-
 		for(int people_generated = 0; people_generated < adults_count; people_generated++)
 		{
 			int person_id = hh_offset + people_generated;
 			people_households_arr[person_id] = hh;				//store the household number
 
 			people_age_arr[person_id] = AGE_ADULT;					//mark as an adult
-			people_workplaces_arr[person_id] = device_setup_fishWorkplace(rand_union.i[people_generated]);
 		}
-
-		//get more random numbers
-		threefry2x64_ctr_t tf_ctr_2 = {{myRandOffset + 1, myRandOffset + 1}};
-		rand_union.c = threefry2x64(tf_ctr_2, tf_k);
 
 		//increment the base ID number by the adults we just added
 		hh_offset += adults_count;
@@ -2610,10 +2674,7 @@ __global__ void kernel_generateHouseholds(
 			int person_id = hh_offset + people_generated;
 			people_households_arr[person_id] = hh;		//store the household number
 
-			device_setup_fishSchoolAndAge(
-				rand_union.i[people_generated],	
-				people_age_arr + person_id,			//ptr into age_array
-				people_workplaces_arr + person_id);		//ptr into workplace array
+			people_age_arr[person_id] = AGE_5;
 		}
 	}
 }
@@ -2642,6 +2703,9 @@ void PandemicSim::setup_generateHouseholds()
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"setup_generateHouseholds");
 
+//	thrust::fill_n(people_ages.begin(), number_people, (age_t) 0);
+
+
 	thrust::device_vector<householdType_t> hh_types_array(number_households+1);
 	householdType_t * hh_types_array_ptr = thrust::raw_pointer_cast(hh_types_array.data());
 
@@ -2652,7 +2716,6 @@ void PandemicSim::setup_generateHouseholds()
 	kernel_householdTypeAssignment<<<cuda_householdTypeAssignmentKernel_blocks,cuda_householdTypeAssignmentKernel_threads>>>(hh_types_array_ptr, number_households,rand_offset);
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
-
 
 	if(TIMING_BATCH_MODE == 0)
 	{
@@ -2684,7 +2747,9 @@ void PandemicSim::setup_generateHouseholds()
 
 	if(SIM_VALIDATION)
 	{
-		thrust::fill_n(people_ages.begin(), number_people, NULL_AGE);
+//		thrust::constant_iterator<age_t> const_it(0);
+//		bool ages_set_to_adult_val = thrust::equal(people_ages.begin(), people_ages.begin() + number_people,const_it);
+
 		thrust::fill_n(people_households.begin(), number_people, NULL_LOC_ID);
 		thrust::fill_n(people_workplaces.begin(), number_people, NULL_LOC_ID);
 
@@ -2701,16 +2766,10 @@ void PandemicSim::setup_generateHouseholds()
 	kernel_generateHouseholds<<<blocks,threads>>>(
 		hh_types_array_ptr, adult_exscan_ptr, child_exscan_ptr, number_households,
 		household_offsets_ptr,
-		people_ages_ptr, people_households_ptr, people_workplaces_ptr,
-		rand_offset);
-
-	if(TIMING_BATCH_MODE == 0)
-	{
-		const int rand_counts_consumed_2 = 2 * number_households;
-		rand_offset += rand_counts_consumed_2;
-	}
-
+		people_ages_ptr, people_households_ptr);
 	household_offsets[number_households] = number_people;  //put the last household_offset in position
+
+	setup_assignWorkplaces();
 
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
@@ -2721,39 +2780,54 @@ void PandemicSim::setup_generateHouseholds()
 	}
 }
 
-
-
 void PandemicSim::setup_fetchVectorPtrs()
 {
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"setup_fetchVectorPtrs");
 
 	people_status_pandemic_ptr = thrust::raw_pointer_cast(people_status_pandemic.data());
+	cudaMemcpyAsync(const_people_status_pandemic,people_status_pandemic_ptr,sizeof(status_t *), cudaMemcpyHostToDevice);
 	people_status_seasonal_ptr = thrust::raw_pointer_cast(people_status_seasonal.data());
-	people_households_ptr = thrust::raw_pointer_cast(people_households.data());
-	people_workplaces_ptr = thrust::raw_pointer_cast(people_workplaces.data());
-	people_ages_ptr = thrust::raw_pointer_cast(people_ages.data());
+	cudaMemcpyAsync(const_people_status_seasonal,people_status_seasonal_ptr,sizeof(status_t *), cudaMemcpyHostToDevice);
 
 	people_days_pandemic_ptr = thrust::raw_pointer_cast(people_days_pandemic.data());
+	cudaMemcpyAsync(const_people_days_pandemic,people_days_pandemic_ptr,sizeof(day_t *),cudaMemcpyHostToDevice);
 	people_days_seasonal_ptr = thrust::raw_pointer_cast(people_days_seasonal.data());
+	cudaMemcpyAsync(const_people_days_seasonal,people_days_seasonal_ptr,sizeof(day_t *),cudaMemcpyHostToDevice);
 	people_gens_pandemic_ptr = thrust::raw_pointer_cast(people_gens_pandemic.data());
+	cudaMemcpyAsync(const_people_gens_pandemic,people_gens_pandemic_ptr,sizeof(gen_t *),cudaMemcpyHostToDevice);
 	people_gens_seasonal_ptr = thrust::raw_pointer_cast(people_gens_seasonal.data());
+	cudaMemcpyAsync(const_people_gens_seasonal,people_gens_seasonal_ptr,sizeof(gen_t *),cudaMemcpyHostToDevice);
+
+	people_households_ptr = thrust::raw_pointer_cast(people_households.data());
+	cudaMemcpyAsync(const_people_households,people_households_ptr,sizeof(locId_t *),cudaMemcpyHostToDevice);
+	people_workplaces_ptr = thrust::raw_pointer_cast(people_workplaces.data());
+	people_ages_ptr = thrust::raw_pointer_cast(people_ages.data());
+	cudaMemcpyAsync(const_people_ages,people_ages_ptr,sizeof(age_t *),cudaMemcpyHostToDevice);
+	cudaMemsetAsync(people_ages_ptr,0,sizeof(age_t) * number_people);
 
 	infected_indexes_ptr = thrust::raw_pointer_cast(infected_indexes.data());
 
 	workplace_offsets_ptr = thrust::raw_pointer_cast(workplace_offsets.data());
+	cudaMemcpyAsync(const_workplace_offsets,workplace_offsets_ptr,sizeof(locOffset_t *),cudaMemcpyHostToDevice);
 	workplace_people_ptr = thrust::raw_pointer_cast(workplace_people.data());
+	cudaMemcpyAsync(const_workplace_people,workplace_people_ptr,sizeof(personId_t *),cudaMemcpyHostToDevice);
 	workplace_max_contacts_ptr = thrust::raw_pointer_cast(workplace_max_contacts.data());
 
 	household_offsets_ptr = thrust::raw_pointer_cast(household_offsets.data());
+	cudaMemcpyAsync(const_household_offsets, household_offsets_ptr, sizeof(locOffset_t *), cudaMemcpyHostToDevice);
 
 	errand_people_table_ptr = thrust::raw_pointer_cast(errand_people_table.data());
+	cudaMemcpyAsync(const_errand_people_table,errand_people_table_ptr,sizeof(personId_t *), cudaMemcpyHostToDevice);
+	
 	people_errands_ptr = thrust::raw_pointer_cast(people_errands.data());
+	cudaMemcpyAsync(const_people_errands,people_errands_ptr,sizeof(errandSchedule_t *),cudaMemcpyHostToDevice);
 
 	infected_errands_ptr = thrust::raw_pointer_cast(infected_errands.data());
 	errand_infected_ContactsDesired_ptr = thrust::raw_pointer_cast(errand_infected_ContactsDesired.data());
 
 	errand_locationOffsets_ptr = thrust::raw_pointer_cast(errand_locationOffsets.data());
+	cudaMemcpyAsync(const_errand_locationOffsets,errand_locationOffsets_ptr,sizeof(locOffset_t *),cudaMemcpyHostToDevice);
 
 	status_counts_dev_ptr = thrust::raw_pointer_cast(status_counts.data());
 
@@ -3712,4 +3786,200 @@ void PandemicSim::setup_initializeStatusArrays()
 
 	thrust::fill(people_gens_pandemic.begin(), people_gens_pandemic.end(), GENERATION_NOT_INFECTED);
 	thrust::fill(people_gens_seasonal.begin(), people_gens_seasonal.end(), GENERATION_NOT_INFECTED);
+}
+
+__device__ errandContactsProfile_t device_recalc_weekdayErrandDests_assignProfile(
+	personId_t myIdx, age_t myAge, 
+	int num_locations, randOffset_t old_rand_offset,
+	errandSchedule_t * output_dest1, errandSchedule_t * output_dest2)
+{
+	//find the counter settings when this errand was generated
+	int myGridPos = myIdx / 2;
+	randOffset_t myRandOffset = old_rand_offset + myGridPos;
+
+	//regen the random numbers
+	threefry2x64_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} u;
+	threefry2x64_ctr_t tf_ctr = {{myRandOffset, myRandOffset}};
+	u.c = threefry2x64(tf_ctr, tf_k);
+
+	int rand_slot = 2 * (myIdx % 2); //either 0 or 2
+	device_assignAfterschoolOrErrandDests_weekday(
+		u.i[rand_slot],u.i[rand_slot+1],
+		myAge,num_locations,
+		output_dest1,output_dest2);
+
+	//return a contacts profile for this person
+	//If they're not an adult, return the afterschool contacts profile
+	if(myAge != AGE_ADULT)
+		return WEEKDAY_ERRAND_PROFILE_AFTERSCHOOL;
+	//else they're an adult
+
+	//for the sake of thoroughness, we'll XOR the rands so that we get a new one
+	int other_rand_slot = (rand_slot + 2) % 4;
+	unsigned int xor_rand = u.i[rand_slot] ^ u.i[rand_slot+1];
+
+	//the afterschool profile is the highest number, get a profile less than that
+	errandContactsProfile_t profile = xor_rand % WEEKDAY_ERRAND_PROFILE_AFTERSCHOOL;
+
+	return profile;
+}
+
+__global__ void kernel_testWeekdayRecalc(personId_t * infected_indexes, int num_infected, age_t * people_ages, int num_locations, randOffset_t rand_offset, errandSchedule_t * output_infected_errands)
+{
+	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
+	{
+		personId_t myIdx = infected_indexes[myPos];
+		age_t myAge = people_ages[myIdx];
+
+		int output_offset = 2 * myPos;
+
+		device_recalc_weekdayErrandDests_assignProfile(myIdx,myAge,num_locations,rand_offset, output_infected_errands + output_offset, output_infected_errands + output_offset + 1);
+	}
+
+}
+void PandemicSim::debug_testErrandRegen_weekday()
+{
+	//assumes this has been called after errands have been copied into location array
+	randOffset_t old_rand_val = rand_offset - (number_people / 2) - (infected_count / 4);
+
+	int blocks = cuda_doWeekdayErrandAssignment_blocks;
+	int threads = cuda_doWeekdayErrandAssignment_threads;
+
+	thrust::device_vector<errandSchedule_t> d_regen_dests(2 * infected_count);
+	errandSchedule_t * d_regen_dests_ptr = thrust::raw_pointer_cast(d_regen_dests.data());
+
+	kernel_testWeekdayRecalc<<<blocks,threads>>>(infected_indexes_ptr,infected_count,people_ages_ptr,number_workplaces,old_rand_val,d_regen_dests_ptr);
+	cudaDeviceSynchronize();
+
+	bool ranges_equal = thrust::equal(d_regen_dests.begin(), d_regen_dests.begin() + (2*infected_count),infected_errands.begin());
+	debug_assert(ranges_equal, "weekday regenerated errands do not match expectation");
+}
+
+//__device__ void device_generateWeekendErrands(errandSchedule_t * errand_array_ptr, int num_locations,randOffset_t myRandOffset)
+
+__device__ void device_recalc_weekendErrandDests(personId_t myIdx, int num_locations,randOffset_t old_rand_offset,errandSchedule_t * errand_array_ptr)
+{
+	randOffset_t myRandOffset = old_rand_offset + (2*myIdx);
+	device_generateWeekendErrands(errand_array_ptr,num_locations,myRandOffset);
+}
+
+void PandemicSim::debug_testErrandRegen_weekend()
+{
+
+}
+
+
+struct assignWorkplaceFunctor : public thrust::unary_function<int,void>
+{
+	int number_people;
+	randOffset_t functor_rand_offset;
+	locId_t * people_workplaces_arr;
+	age_t * people_ages_arr;
+
+	__device__ void operator () (int myGridPos) const
+	{
+		//	age_t * people_ages_arr = const_people_ages[0];
+
+		randOffset_t myRandOffset = functor_rand_offset + myGridPos;
+
+		threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+		union{
+			threefry2x64_ctr_t c;
+			unsigned int i[4];
+		} rand_union;
+		threefry2x64_ctr_t tf_ctr = {{myRandOffset, myRandOffset}};
+		rand_union.c = threefry2x64(tf_ctr,tf_k);
+
+		int myPos = myGridPos * 4;
+		for(int i = 0; i < 4 && myPos + i < number_people; i++)
+		{
+			int myIdx = myPos + i;
+			device_setup_assignWorkplaceOrSchool(rand_union.i[i],people_ages_arr + myIdx,people_workplaces_arr + myIdx);
+		}
+	}
+};
+
+
+void PandemicSim::debug_testWorkplaceAssignmentFunctor()
+{
+	if(SIM_PROFILING)
+		profiler.beginFunction(-1,"debug_testWorkplaceAssignmentFunctor");
+
+	thrust::device_vector<locId_t> workplaces_copy(number_people);
+	locId_t * people_wp_ptr = thrust::raw_pointer_cast(workplaces_copy.data());
+
+	thrust::device_vector<age_t> ages_copy(number_people);
+	thrust::copy_n(people_ages.begin(), number_people,ages_copy.begin());
+	age_t * people_a_ptr = thrust::raw_pointer_cast(ages_copy.data());
+
+	assignWorkplaceFunctor wp_functor;
+	wp_functor.functor_rand_offset = rand_offset;
+	wp_functor.number_people = number_people;
+	wp_functor.people_workplaces_arr = people_wp_ptr;
+	wp_functor.people_ages_arr = people_a_ptr;
+
+	thrust::counting_iterator<int> count_it(0);
+	thrust::for_each_n(thrust::device,count_it,(number_people/4)+1,wp_functor);
+
+	bool workplaces_match = thrust::equal(workplaces_copy.begin(), workplaces_copy.end(), people_workplaces.begin());
+	bool ages_match = thrust::equal(ages_copy.begin(), ages_copy.end(), people_ages.begin());
+
+	//debug_dump_array_toTempFile("functor_wps.txt","wp",&workplaces_copy,number_people);
+
+	if(SIM_PROFILING)
+		profiler.endFunction(-1,number_people);
+}
+
+void PandemicSim::setup_assignWorkplaces()
+{
+	if(SIM_PROFILING)
+		profiler.beginFunction(-1,"setup_assignWorkplaces");
+
+	//push the rand offset we used to const memory
+	randOffset_t wp_randOffset_host[1];
+	wp_randOffset_host[0] = rand_offset;
+	cudaMemcpy(workplace_setup_randOffset,wp_randOffset_host,sizeof(randOffset_t),cudaMemcpyHostToDevice);
+
+	assignWorkplaceFunctor wp_functor;
+	wp_functor.functor_rand_offset = rand_offset;
+	wp_functor.number_people = number_people;
+	wp_functor.people_workplaces_arr = people_workplaces_ptr;
+	wp_functor.people_ages_arr = people_ages_ptr;
+
+	thrust::counting_iterator<int> count_it(0);
+	thrust::for_each_n(thrust::device,count_it,(number_people/4)+1,wp_functor);
+
+	if(TIMING_BATCH_MODE == 0)
+	{
+		const int rand_counts_consumed_2 = number_people / 4;
+		rand_offset += rand_counts_consumed_2;
+	}
+
+	if(SIM_PROFILING)
+		profiler.endFunction(-1,number_people);
+}
+
+__device__ locId_t device_recalcWorkplace(personId_t myIdx, age_t myAge)
+{
+	randOffset_t myRandOffset = workplace_setup_randOffset[0];
+	myRandOffset += (myIdx / 4);
+
+	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} rand_union;
+	threefry2x64_ctr_t tf_ctr = {{myRandOffset, myRandOffset}};
+	rand_union.c = threefry2x64(tf_ctr,tf_k);
+
+	int rand_slot = myIdx % 4;
+
+	locId_t workplace_val;
+	device_setup_assignWorkplaceOrSchool(rand_union.i[rand_slot],&myAge,&workplace_val);
+
+	return workplace_val;
 }
