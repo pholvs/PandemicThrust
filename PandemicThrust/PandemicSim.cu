@@ -18,6 +18,8 @@ int cuda_threads = 256;
 FILE * f_outputInfectedStats;
 
 FILE * fDebug;
+float max_proportion_infected = 0;
+int max_proportion_infected_day = 0;
 
 __device__ __constant__ int SEED_DEVICE[SEED_LENGTH];
 int SEED_HOST[SEED_LENGTH];
@@ -83,10 +85,6 @@ __device__ __constant__ int HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[HH_TABLE_ROWS];
 int HOUSEHOLD_TYPE_CHILD_COUNT_HOST[HH_TABLE_ROWS];
 __device__ __constant__ int HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[HH_TABLE_ROWS];
 
-
-
-
-
 PandemicSim::PandemicSim() 
 {
 	logging_openOutputStreams();
@@ -150,9 +148,17 @@ void PandemicSim::setupSim()
 	
 	if(SIM_VALIDATION && debug_log_function_calls)
 		debug_print("setting up households");
-	
-	//setup households and size arrays
+
+	//finish copydown of __constant__ sim data
+	cudaDeviceSynchronize();
+
+	//must be done before generating households
+	number_people = setup_calcPopulationSize_thrust();
+	setup_sizeGlobalArrays();
+
+	//setup households
 	setup_generateHouseholds();	//generates according to PDFs
+	setup_initializeStatusArrays();
 
 	if(CONSOLE_OUTPUT)
 		printf("%d people, %d households, %d workplaces\n",number_people, number_households, number_workplaces);
@@ -187,7 +193,7 @@ void PandemicSim::setupSim()
 
 void PandemicSim::logging_openOutputStreams()
 {
-	if(log_infected_info)
+	if(SIM_VALIDATION && log_infected_info)
 	{
 		if(OUTPUT_FILES_IN_PARENTDIR)
 			fInfected = fopen("../debug_infected.csv", "w");
@@ -203,7 +209,7 @@ void PandemicSim::logging_openOutputStreams()
 		fprintf(fLocationInfo, "current_day, hour_index, i, offset, count, max_contacts\n");
 	}*/
 
-	if(log_contacts)
+	if(SIM_VALIDATION && log_contacts)
 	{
 		if(OUTPUT_FILES_IN_PARENTDIR)
 			fContacts = fopen("../debug_contacts.csv", "w");
@@ -214,7 +220,7 @@ void PandemicSim::logging_openOutputStreams()
 	}
 
 
-	if(log_actions)
+	if(SIM_VALIDATION && log_actions)
 	{
 		if(OUTPUT_FILES_IN_PARENTDIR)
 			fActions = fopen("../debug_actions.csv", "w");
@@ -223,7 +229,7 @@ void PandemicSim::logging_openOutputStreams()
 		fprintf(fActions, "current_day, i, infector, victim, action_type, action_type_string\n");
 	}
 
-	if(log_actions_filtered)
+	if(SIM_VALIDATION && log_actions_filtered)
 	{
 		if(OUTPUT_FILES_IN_PARENTDIR)
 			fActionsFiltered = fopen("../debug_filtered_actions.csv", "w");
@@ -854,7 +860,7 @@ void PandemicSim::setup_calcLocationOffsets(
 
 void PandemicSim::logging_closeOutputStreams()
 {
-	if(log_infected_info)
+	if(SIM_VALIDATION && log_infected_info)
 	{
 		fclose(fInfected);
 	}
@@ -864,19 +870,32 @@ void PandemicSim::logging_closeOutputStreams()
 		fclose(fLocationInfo);
 	}*/
 
-	if(log_contacts)
+	if(SIM_VALIDATION && log_contacts)
 	{
 		fclose(fContacts);
 	}
 
-	if(log_actions)
+	if(SIM_VALIDATION && log_actions)
 	{
 		fclose(fActions);
 	}
 
-	if(log_actions_filtered)
+	if(SIM_VALIDATION && log_actions_filtered)
 	{
 		fclose(fActionsFiltered);
+	}
+
+	if(LOG_INFECTED_PROPORTION)
+	{
+		FILE * fInfectedMaxPolling;
+		if(OUTPUT_FILES_IN_PARENTDIR)
+			fInfectedMaxPolling = fopen("../infected_max.txt","w");
+		else
+			fInfectedMaxPolling = fopen("infected_max.txt","w");
+
+		fprintf(fInfectedMaxPolling,"max_proportion,day\n%f,%d\n",max_proportion_infected,max_proportion_infected_day);
+
+		fclose(fInfectedMaxPolling);
 	}
 
 	if(SIM_VALIDATION)
@@ -929,6 +948,15 @@ void PandemicSim::runToCompletion()
 
 		if(POLL_MEMORY_USAGE)
 			logging_pollMemoryUsage_takeSample(current_day);
+		if(LOG_INFECTED_PROPORTION)
+		{
+			float proportion_infected = (float) infected_count / number_people;
+			if(proportion_infected > max_proportion_infected)
+			{
+				max_proportion_infected = proportion_infected;
+				max_proportion_infected_day = current_day;
+			}
+		}
 
 		//MAKE CONTACTS DEPENDING ON TYPE OF DAY
 		if(is_weekend())
@@ -1034,21 +1062,15 @@ void PandemicSim::setup_sizeGlobalArrays()
 {
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"setup_sizeGlobalArrays");
-	//setup people status:
+
 	people_status_pandemic.resize(number_people);
 	people_status_seasonal.resize(number_people);
-	thrust::fill(people_status_pandemic.begin(), people_status_pandemic.end(), STATUS_SUSCEPTIBLE);
-	thrust::fill(people_status_seasonal.begin(), people_status_seasonal.end(), STATUS_SUSCEPTIBLE);
 
 	people_days_pandemic.resize(number_people);
 	people_days_seasonal.resize(number_people);
-	thrust::fill(people_days_pandemic.begin(), people_days_pandemic.end(), DAY_NOT_INFECTED);
-	thrust::fill(people_days_seasonal.begin(), people_days_seasonal.end(), DAY_NOT_INFECTED);
 
 	people_gens_pandemic.resize(number_people);
 	people_gens_seasonal.resize(number_people);
-	thrust::fill(people_gens_pandemic.begin(), people_gens_pandemic.end(), GENERATION_NOT_INFECTED);
-	thrust::fill(people_gens_seasonal.begin(), people_gens_seasonal.end(), GENERATION_NOT_INFECTED);
 
 	people_ages.resize(number_people);
 	people_households.resize(number_people);
@@ -2456,7 +2478,7 @@ __global__ void kernel_householdTypeAssignment(householdType_t * hh_type_array, 
 	}
 }
 
-__device__ int device_setup_fishHouseholdType(unsigned int rand_val)
+__device__ householdType_t device_setup_fishHouseholdType(unsigned int rand_val)
 {
 	float y = (float) rand_val / UNSIGNED_MAX;
 
@@ -2464,7 +2486,8 @@ __device__ int device_setup_fishHouseholdType(unsigned int rand_val)
 	while(y > HOUSEHOLD_TYPE_CDF_DEVICE[row] && row < HH_TABLE_ROWS - 1)
 		row++;
 
-	return row;
+	householdType_t ret = row;
+	return ret;
 }
 
 
@@ -2592,17 +2615,17 @@ __global__ void kernel_generateHouseholds(
 }
 
 
-struct hh_adult_count_functor : public thrust::unary_function<int,int>
+struct hh_adult_count_functor : public thrust::unary_function<householdType_t,int>
 {
-	__device__ int operator () (int hh_type) const
+	__device__ int operator () (householdType_t hh_type) const
 	{
 		return HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[hh_type];
 	}
 };
 
-struct hh_child_count_functor : public thrust::unary_function<int,int>
+struct hh_child_count_functor : public thrust::unary_function<householdType_t,int>
 {
-	__device__ int operator () (int hh_type) const
+	__device__ int operator () (householdType_t hh_type) const
 	{
 		return HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[hh_type];
 	}
@@ -2641,33 +2664,19 @@ void PandemicSim::setup_generateHouseholds()
 	//this will let us build the adult_index and child_index arrays
 	thrust::exclusive_scan(
 		thrust::make_transform_iterator(hh_types_array.begin(), hh_adult_count_functor()),
-		thrust::make_transform_iterator(hh_types_array.end(), hh_adult_count_functor()),
+		thrust::make_transform_iterator(hh_types_array.begin() + number_households + 1, hh_adult_count_functor()),
 		adult_count_exclScan.begin());
 	thrust::exclusive_scan(
 		thrust::make_transform_iterator(hh_types_array.begin(), hh_child_count_functor()),
-		thrust::make_transform_iterator(hh_types_array.end(), hh_child_count_functor()),
+		thrust::make_transform_iterator(hh_types_array.begin() + number_households + 1, hh_child_count_functor()),
 		child_count_exclScan.begin());
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
-	
-	/*
-	h_vec h_hh_types = hh_types_array;
-	h_vec h_child_count_exscan = child_count_exclScan;
-	h_vec h_adult_count_exscan = adult_count_exclScan;
-	FILE * ftemp = fopen("../households.txt","w");
-	fprintf(ftemp,"i,hh_type,adult_exscan,child_exscan\n");
-	for(int i = 0; i < number_households + 1; i++)
-		fprintf(ftemp, "%d,%d,%d,%d\n", i, h_hh_types[i], h_adult_count_exscan[i],h_child_count_exscan[i]);
-	fclose(ftemp);*/
 
 	//the exclusive_scan of number_households+1 holds the total number of adult and children in the sim
 	//(go one past the end to find the totals)
 	number_adults = adult_count_exclScan[number_households];
 	number_children = child_count_exclScan[number_households];
-	number_people = number_adults + number_children;
-	
-	//now we can allocate the rest of our memory
-	setup_sizeGlobalArrays();
 
 	if(SIM_VALIDATION)
 	{
@@ -3553,4 +3562,153 @@ __device__ maxContacts_t device_getWorkplaceMaxContacts(errandSchedule_t errand,
 	} while (loc_id >= type_offset + type_count);
 
 	return type_max;
+}
+
+
+#define SETUP_COUNTING_GRID_BLOCKS 32
+#define SETUP_COUNTING_GRID_THREADS 256
+
+__global__ void kernel_calcPopulationSize(int * sum_ptr, int number_households)
+{
+	threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+	union{
+		threefry2x64_ctr_t c;
+		unsigned int i[4];
+	} rand_union;
+
+	//__shared__ int reduction_array[SETUP_COUNTING_GRID_THREADS];
+	extern __shared__ int reduction_array[];
+
+	int tid = threadIdx.x;
+	int * myLocalSum = &reduction_array[tid];
+	myLocalSum[0] = 0;
+
+	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <= number_households / 4; myGridPos += gridDim.x * blockDim.x)
+	{
+		randOffset_t myRandOffset = myGridPos;
+		threefry2x64_ctr_t tf_ctr = {{myRandOffset, myRandOffset}};
+		rand_union.c = threefry2x64(tf_ctr,tf_k);
+
+		int myPos = myGridPos * 4;
+
+		if(myPos < number_households)
+		{
+			householdType_t hh_type = device_setup_fishHouseholdType(rand_union.i[0]);
+			myLocalSum[0] += HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[hh_type];
+			myLocalSum[0] += HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[hh_type];
+		}
+		if(myPos + 1 < number_households)
+		{
+			householdType_t hh_type = device_setup_fishHouseholdType(rand_union.i[1]);
+			myLocalSum[0] += HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[hh_type];
+			myLocalSum[0] += HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[hh_type];
+		}
+		if(myPos + 2 < number_households)
+		{
+			householdType_t hh_type = device_setup_fishHouseholdType(rand_union.i[2]);
+			myLocalSum[0] += HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[hh_type];
+			myLocalSum[0] += HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[hh_type];
+		}
+		if(myPos + 3 < number_households)
+		{
+			householdType_t hh_type = device_setup_fishHouseholdType(rand_union.i[3]);
+			myLocalSum[0] += HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[hh_type];
+			myLocalSum[0] += HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[hh_type];
+		}
+	}
+
+	__syncthreads();
+	for(int offset = blockDim.x / 2; offset > 0;  offset /= 2)
+	{
+		if(tid < offset)
+			reduction_array[tid] += reduction_array[tid+offset];
+		__syncthreads();
+	}
+	if(tid == 0)
+		atomicAdd(sum_ptr,reduction_array[0]);
+}
+
+
+struct hh_peopleCount_functor : public thrust::unary_function<randOffset_t,int>
+{
+	int number_households;
+
+	__device__ int operator () (randOffset_t myRandOffset) const
+	{
+		threefry2x64_key_t tf_k = {{(long) SEED_DEVICE[0], (long) SEED_DEVICE[1]}};
+		union{
+			threefry2x64_ctr_t c;
+			unsigned int i[4];
+		} rand_union;
+		threefry2x64_ctr_t tf_ctr = {{myRandOffset, myRandOffset}};
+		rand_union.c = threefry2x64(tf_ctr,tf_k);
+
+		int ret_val = 0;
+
+		int myPos = myRandOffset * 4;
+		for(int i = 0; i < 4 && myPos + i < number_households; i++)
+		{
+			householdType_t hh_type = device_setup_fishHouseholdType(rand_union.i[i]);
+			ret_val += HOUSEHOLD_TYPE_ADULT_COUNT_DEVICE[hh_type];
+			ret_val += HOUSEHOLD_TYPE_CHILD_COUNT_DEVICE[hh_type];
+		}
+
+		return ret_val;
+	}
+};
+
+
+int PandemicSim::setup_calcPopulationSize()
+{
+	if(SIM_PROFILING)
+		profiler.beginFunction(-1,"setup_calcPopulationSize");
+
+	thrust::device_vector<int> device_popSize(1);
+	device_popSize[0] = 0;
+	int * device_popSize_ptr = thrust::raw_pointer_cast(device_popSize.data());
+
+	int blocks = SETUP_COUNTING_GRID_BLOCKS;
+	int threads = SETUP_COUNTING_GRID_THREADS;
+	size_t smem_size = threads * sizeof(int);
+	//size_t smem_size = 0;
+
+	kernel_calcPopulationSize<<<blocks,threads,smem_size>>>(device_popSize_ptr,number_households);
+	cudaDeviceSynchronize();
+
+	int host_popSize = device_popSize[0];
+
+	if(SIM_PROFILING)
+		profiler.endFunction(-1,number_households);
+
+	return host_popSize;
+}
+
+int PandemicSim::setup_calcPopulationSize_thrust()
+{
+	if(SIM_PROFILING)
+		profiler.beginFunction(-1,"setup_calcPopulationSize_thrust");
+
+	//get a counting iterator
+	thrust::counting_iterator<randOffset_t> count_it(0);
+
+	hh_peopleCount_functor peoplecount_functor;
+	peoplecount_functor.number_households = number_households;
+
+	int p = thrust::transform_reduce(count_it, count_it + (number_households/4),peoplecount_functor,0,thrust::plus<int>());
+
+	profiler.endFunction(-1,number_households);
+
+	return p;
+}
+
+void PandemicSim::setup_initializeStatusArrays()
+{
+	thrust::fill(people_status_pandemic.begin(), people_status_pandemic.end(), STATUS_SUSCEPTIBLE);
+	thrust::fill(people_status_seasonal.begin(), people_status_seasonal.end(), STATUS_SUSCEPTIBLE);
+
+	thrust::fill(people_days_pandemic.begin(), people_days_pandemic.end(), DAY_NOT_INFECTED);
+	thrust::fill(people_days_seasonal.begin(), people_days_seasonal.end(), DAY_NOT_INFECTED);
+
+	thrust::fill(people_gens_pandemic.begin(), people_gens_pandemic.end(), GENERATION_NOT_INFECTED);
+	thrust::fill(people_gens_seasonal.begin(), people_gens_seasonal.end(), GENERATION_NOT_INFECTED);
 }

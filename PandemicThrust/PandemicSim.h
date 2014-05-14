@@ -18,7 +18,7 @@
 #define CONSOLE_OUTPUT 1
 #define TIMING_BATCH_MODE 0
 #define OUTPUT_FILES_IN_PARENTDIR 0
-#define POLL_MEMORY_USAGE 1
+#define POLL_MEMORY_USAGE 0
 #define USE_PERSISTENT_FILE 1
 
 #define DEBUG_SYNCHRONIZE_NEAR_KERNELS 0
@@ -37,6 +37,8 @@
 #define log_actions 0
 #define log_actions_filtered 0
 #define log_people_info 0
+
+#define LOG_INFECTED_PROPORTION 1
 
 //low overhead
 #define debug_log_function_calls 0
@@ -71,6 +73,9 @@ public:
 
 	void setup_calculateInfectionData();
 	void setup_generateHouseholds();
+	int setup_calcPopulationSize();
+	int setup_calcPopulationSize_thrust();
+	void setup_initializeStatusArrays();
 
 	void setup_pushDeviceData();
 	void setup_initialInfected();
@@ -325,7 +330,7 @@ __device__ void device_checkActionAndWrite(bool infects_pandemic, bool infects_s
 
 //initial setup methods
 __global__ void kernel_householdTypeAssignment(householdType_t * hh_type_array, int num_households, randOffset_t rand_offset);
-__device__ int device_setup_fishHouseholdType(unsigned int rand_val);
+__device__ householdType_t device_setup_fishHouseholdType(unsigned int rand_val);
 
 __global__ void kernel_generateHouseholds(
 	householdType_t * hh_type_array, 
