@@ -2279,28 +2279,11 @@ void PandemicSim::final_countReproduction()
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"final_countReproduction");
 
-	cub::DoubleBuffer<gen_t> gen_pandemic_doubleBuffer;
-	gen_pandemic_doubleBuffer.selector = 0;
-	gen_pandemic_doubleBuffer.d_buffers[0] = thrust::raw_pointer_cast(people_gens_pandemic.data());	//input: gens_p
-//	gen_t * sorted_gens_p_ptr = (gen_t *) thrust::raw_pointer_cast(people_errands_a.data());
-	gen_pandemic_doubleBuffer.d_buffers[1] = (gen_t *) thrust::raw_pointer_cast(people_days_pandemic.data());
-
-	cub::DoubleBuffer<gen_t> gen_seasonal_doubleBuffer;
-	gen_seasonal_doubleBuffer.selector = 0;
-	gen_seasonal_doubleBuffer.d_buffers[0] = thrust::raw_pointer_cast(people_gens_seasonal.data());	//input: gens_s
-//	gen_t * sorted_gens_s_ptr = (gen_t *) thrust::raw_pointer_cast(people_errands_b.data());
-	gen_seasonal_doubleBuffer.d_buffers[1] = (gen_t *) thrust::raw_pointer_cast(people_days_seasonal.data());
-
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"final_countReproduction_sort");
 
-	cub::DeviceRadixSort::SortKeys(
-		errand_sorting_tempStorage, errand_sorting_tempStorage_size, //temp buffer
-		gen_pandemic_doubleBuffer, 	number_people);	//vals, N
-
-	cub::DeviceRadixSort::SortKeys(
-		errand_sorting_tempStorage, errand_sorting_tempStorage_size, //temp buffer
-		gen_seasonal_doubleBuffer, 	number_people);	//vals, N
+	thrust::sort(people_gens_pandemic.begin(), people_gens_pandemic.end());
+	thrust::sort(people_gens_seasonal.begin(), people_gens_seasonal.end());
 		
 	if(SIM_PROFILING)
 		profiler.endFunction(-1,number_people);
@@ -2308,21 +2291,21 @@ void PandemicSim::final_countReproduction()
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"final_countReproduction_genSearch");
 
-	thrust::counting_iterator<day_t> count_it(0);
-	vec_t pandemic_gen_counts(MAX_DAYS + 1);
-	vec_t seasonal_gen_counts(MAX_DAYS + 1);
+	thrust::counting_iterator<int> count_it(0);
 
+	vec_t pandemic_gen_counts(MAX_DAYS + 1);
+	pandemic_gen_counts[MAX_DAYS] = number_people;
 	thrust::lower_bound(
-		people_days_pandemic.begin(), people_days_pandemic.begin() + number_people,
+		people_gens_pandemic.begin(), people_gens_pandemic.end(),
 		count_it, count_it + MAX_DAYS,
 		pandemic_gen_counts.begin());
+
+	vec_t seasonal_gen_counts(MAX_DAYS + 1);
+	seasonal_gen_counts[MAX_DAYS] = number_people;
 	thrust::lower_bound(
-		people_days_seasonal.begin(), people_days_seasonal.begin() + number_people,
+		people_gens_seasonal.begin(), people_gens_seasonal.end(),
 		count_it, count_it + MAX_DAYS,
 		seasonal_gen_counts.begin());
-
-	pandemic_gen_counts[MAX_DAYS] = number_people;
-	seasonal_gen_counts[MAX_DAYS] = number_people;
 
 	if(SIM_PROFILING)
 		profiler.endFunction(-1,number_people);
