@@ -35,9 +35,7 @@ int h_actions_freshness = -2;
 thrust::host_vector<errandSchedule_t> h_people_errands;
 int errand_lookup_freshness = -2;
 
-
 thrust::host_vector<personId_t> h_errand_people_table;
-thrust::host_vector<errandSchedule_t> h_infected_errands_array;
 h_vec h_errand_locationOffsets_multiHour;
 int h_errand_data_freshness = -2;
 
@@ -62,9 +60,25 @@ void PandemicSim::debug_copyFixedData()
 	if(SIM_PROFILING)
 		profiler.beginFunction(current_day, "debug_copyFixedData");
 
-	thrust::copy_n(people_households.begin(), number_people, h_people_households.begin());
-	thrust::copy_n(people_workplaces.begin(), number_people, h_people_workplaces.begin());
 	thrust::copy_n(people_ages.begin(), number_people, h_people_age.begin());
+
+	thrust::copy_n(people_households.begin(), number_people, h_people_households.begin());
+/*	thrust::copy_n(people_workplaces.begin(), number_people, h_people_workplaces.begin());
+
+	thrust::host_vector<locId_t> h_regen_workplaces(number_people);
+	for(personId_t idx = 0; idx < number_people; idx++)
+	{
+		age_t myAge = h_people_age[idx];
+		h_regen_workplaces[idx] = host_recalcWorkplace(idx,myAge);
+	}
+	bool workplaces_match = thrust::equal(h_people_workplaces.begin(), h_people_workplaces.begin() + number_people, h_regen_workplaces.begin());
+	debug_assert(workplaces_match, "generated workplaces do not match workplaces copied off device");*/
+
+	for(personId_t idx = 0; idx < number_people; idx++)
+	{
+		age_t myAge = h_people_age[idx];
+		h_people_workplaces[idx] = host_recalcWorkplace(idx,myAge);
+	}
 
 	thrust::copy_n(workplace_offsets.begin(), number_workplaces + 1, h_workplace_offsets.begin());
 	thrust::copy_n(workplace_people.begin(), number_people, h_workplace_people.begin());
@@ -115,8 +129,6 @@ void PandemicSim::debug_sizeHostArrays()
 	h_errand_people_table.resize(errand_people_table.size());
 	h_people_errands.resize(people_errands.size());
 
-	h_infected_errands_array.resize(infected_errands.size());
-
 	h_errand_locationOffsets_multiHour.resize(errand_locationOffsets.size());
 
 	if(SIM_PROFILING)
@@ -130,7 +142,6 @@ void PandemicSim::validateContacts_wholeDay()
 
 	debug_freshenContacts();
 	debug_freshenInfected();
-	debug_freshenErrands();
 
 	/*if(DOUBLECHECK_CONTACTS)
 	{
@@ -142,9 +153,8 @@ void PandemicSim::validateContacts_wholeDay()
 		thrust::copy_n(errand_locationOffsets_multiHour.begin(), num_errand_location_offsets, h_errand_locationOffsets_multiHour.begin());
 	}*/
 
-
+	debug_generateErrandLookup();
 	debug_validateErrandSchedule();
-	debug_validateInfectedLocArrays();
 
 	int contacts_per_person = is_weekend() ?  MAX_CONTACTS_WEEKEND : MAX_CONTACTS_WEEKDAY;
 	int weekend = is_weekend();
@@ -219,8 +229,7 @@ void PandemicSim::validateContacts_wholeDay()
 				//begin type-specific checks
 				if (contact_type == CONTACT_TYPE_WORKPLACE)
 				{
-					locId_t wp_infector = host_recalcWorkplace(infected_index,infector_age);
-					locId_t wp_victim = host_recalcWorkplace(contact_victim,victim_age);
+
 					infector_loc = h_people_workplaces[contact_infector];
 					victim_loc = h_people_workplaces[contact_victim];
 
@@ -369,7 +378,14 @@ void PandemicSim::validateContacts_wholeDay()
 				}
 				else if(contact_type == CONTACT_TYPE_AFTERSCHOOL)
 				{
+					errandSchedule_t inf_schedule[NUM_WEEKDAY_ERRANDS];
+					host_recalc_weekdayErrandDests_assignProfile(contact_infector,infector_age, inf_schedule,inf_schedule+1);
+					errandSchedule_t vic_schedule[NUM_WEEKEND_ERRANDS];
+					host_recalc_weekdayErrandDests_assignProfile(contact_victim,victim_age,vic_schedule,vic_schedule+1);
+
 					//fish out afterschool location from the first hour slot of "errands"
+//					infector_loc = inf_schedule[0];
+//					victim_loc = vic_schedule[0];
 					infector_loc = h_people_errands[infected_index] % number_workplaces;
 					victim_loc = h_people_errands[contact_victim] % number_workplaces;
 					locs_matched = (infector_loc == victim_loc);
@@ -425,19 +441,37 @@ void PandemicSim::validateContacts_wholeDay()
 		profiler.endFunction(current_day, infected_count);
 }
 
-void PandemicSim::debug_copyErrandLookup()
+void PandemicSim::debug_generateErrandLookup()
 {
 	if(SIM_PROFILING)
 		profiler.beginFunction(current_day,"debug_copyErrandLookup");
 
 	int num_errands = number_people * errands_per_person_today();
-	thrust::copy_n(people_errands.begin(), num_errands,h_people_errands.begin());
+
+	errandSchedule_t * arr_base = &h_people_errands[0];
+	for(personId_t idx = 0; idx < number_people; idx++)
+	{
+		if(is_weekend())
+		{
+			errandSchedule_t * errand_ptr = arr_base + (idx * NUM_WEEKEND_ERRANDS);
+			host_recalc_weekendErrandDests(idx,errand_ptr);
+		}
+		else
+		{
+			age_t myAge = h_people_age[idx];
+			errandSchedule_t * errand_ptr = arr_base + idx;
+			host_recalc_weekdayErrandDests_assignProfile(idx,myAge,errand_ptr,errand_ptr+number_people);
+		}
+	}
+
+//	bool errands_match = thrust::equal(h_people_errands.begin(),h_people_errands.begin() + num_errands,h_errand_recalc.begin());
+//	debug_assert(errands_match,"host generated errands do not match what was copied off device");
 
 	if(SIM_PROFILING)
 		profiler.endFunction(current_day,num_errands);
 }
 
-
+/*
 void PandemicSim::debug_dumpInfectedErrandLocs()
 {
 
@@ -455,7 +489,7 @@ void PandemicSim::debug_dumpInfectedErrandLocs()
 	}
 
 	thrust::copy_n(infected_indexes.begin(), infected_count, h_infected_indexes.begin());
-	thrust::copy_n(infected_errands.begin(), errand_dests_to_copy, h_infected_errands_array.begin());
+	debug_generateErrandLookup();
 	thrust::copy_n(errand_locationOffsets.begin(), loc_offsets_to_copy, h_errand_locationOffsets_multiHour.begin());
 
 	int errands_per_person = is_weekend() ? NUM_WEEKEND_ERRANDS : NUM_WEEKDAY_ERRANDS;
@@ -483,83 +517,7 @@ void PandemicSim::debug_dumpInfectedErrandLocs()
 	}
 
 	fclose(f_locs);
-}
-
-
-void PandemicSim::debug_validateInfectedLocArrays()
-{
-	if(SIM_PROFILING)
-		profiler.beginFunction(current_day, "debug_validateInfectedLocArrays");
-
-	int weekend = is_weekend();
-	int errands_per_day = is_weekend() ? NUM_WEEKEND_ERRANDS : NUM_WEEKDAY_ERRANDS;
-
-	for(int pos = 0; pos < infected_count; pos++)
-	{
-		int inf_idx = h_infected_indexes[pos];
-
-		for(int errand = 0; errand < errands_per_day; errand++)
-		{
-			int errand_loc_array_val;
-			if(weekend)
-			{
-				errand_loc_array_val = h_people_errands[(inf_idx * errands_per_day) + errand];
-			}
-			else
-			{
-				errand_loc_array_val = h_people_errands[(errand * number_people) + inf_idx];
-			}
-			int inf_loc_array_val  = h_infected_errands_array[(pos * errands_per_day) + errand];
-
-			debug_assert("infected_loc value does not match errand_dest val", errand_loc_array_val,inf_loc_array_val);
-		}
-	}
-
-	if(SIM_PROFILING)
-		profiler.endFunction(current_day, infected_count);
-}
-
-void PandemicSim::debug_doublecheckContact_usingPeopleTable(int pos, int number_hours, int infector, int victim)
-{
-	int valid_contact = 0;
-
-	throw;
-	/*
-	for(int hour = 0; hour < number_hours; hour++)
-	{
-		int loc = h_in[(number_hours * pos) + hour];
-
-
-		int loc_offset_pos = (number_workplaces * hour) + loc;
-		int loc_offset = h_errand_locationOffsets_multiHour[loc_offset_pos];
-		int loc_count = 
-			loc == number_workplaces - 1 ? 
-			h_errand_locationOffsets_multiHour[loc_offset_pos+1] - loc_offset :
-		number_people - loc_offset;
-
-		//offset by number of hours
-		loc_offset += (number_people * hour);
-
-		int found_infector = 0;
-		int found_victim = 0;
-
-		for(int pos =  loc_offset; pos < loc_offset + loc_count && !(found_infector && found_victim); pos++)
-		{
-			int person_idx = h_errand_people_table[pos];
-			if(person_idx == infector)
-				found_infector = 1;
-			else if (person_idx == victim)
-				found_victim = 1;
-		}
-
-		debug_assert(found_infector,"doublecheck: could not find infector for given location in errand lookup table, index",infector);
-
-		if(found_infector && found_victim)
-			valid_contact = 1;
-	}
-
-	debug_assert(valid_contact, "doublecheck: could not find matching errand location between infector and victim, infector index", infector);*/
-}
+}*/
 
 void PandemicSim::debug_validateErrandSchedule()
 {
@@ -883,17 +841,6 @@ void PandemicSim::debug_freshenActions()
 		thrust::copy_n(debug_contactsToActions_float4.begin(), num_contacts, h_actions_rand4.begin());
 
 		h_actions_freshness = current_day;
-	}
-}
-
-void PandemicSim::debug_freshenErrands()
-{
-	if(h_errand_data_freshness < current_day)
-	{
-		int infected_errands_to_copy = num_infected_errands_today();
-		thrust::copy_n(infected_errands.begin(),infected_errands_to_copy,h_infected_errands_array.begin());
-
-		h_errand_data_freshness = current_day;
 	}
 }
 

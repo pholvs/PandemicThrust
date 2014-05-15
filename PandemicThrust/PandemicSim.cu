@@ -90,6 +90,7 @@ __device__ __constant__ simRandOffsetsStruct_t device_randOffsetsStruct[1];
 simRandOffsetsStruct_t host_randOffsetsStruct[1];
 
 __device__ __constant__ simSizeConstantsStruct_t device_simSizeStruct[1];
+simSizeConstantsStruct_t host_simSizeStruct[1];
 
 __device__ __constant__ simArrayPtrStruct_t device_arrayPtrStruct[1];
 __device__ __constant__ simDebugArrayPtrStruct_t device_debugArrayPtrStruct[1];
@@ -170,15 +171,11 @@ void PandemicSim::setupSim()
 	number_people = setup_calcPopulationSize_thrust();
 	setup_sizeGlobalArrays();
 
-	if(1)
-	{
-		simSizeConstantsStruct_t host_simSizeStruct[1];
-		host_simSizeStruct[0].number_people = number_people;
-		host_simSizeStruct[0].number_households = number_households;
-		host_simSizeStruct[0].number_workplaces = number_workplaces;
-		cudaMemcpyToSymbolAsync(device_simSizeStruct,host_simSizeStruct,sizeof(simSizeConstantsStruct_t),0,cudaMemcpyHostToDevice);
-	}
-
+	host_simSizeStruct[0].number_people = number_people;
+	host_simSizeStruct[0].number_households = number_households;
+	host_simSizeStruct[0].number_workplaces = number_workplaces;
+	cudaMemcpyToSymbolAsync(device_simSizeStruct,host_simSizeStruct,sizeof(simSizeConstantsStruct_t),0,cudaMemcpyHostToDevice);
+	
 	//setup households
 	setup_generateHouseholds();	//generates according to PDFs
 	setup_initializeStatusArrays();
@@ -1238,12 +1235,8 @@ void PandemicSim::doWeekday_wholeDay()
 		cudaDeviceSynchronize();
 	if(SIM_VALIDATION)
 	{
-		debug_copyErrandLookup();	//debug: copy the lookup tables to host memory before they are sorted
-		debug_testErrandRegen_weekday();
+		//debug_testErrandRegen_weekday();
 	}
-
-
-
 
 	//generate location arrays for each hour
 	for(int hour = 0; hour < NUM_WEEKDAY_ERRAND_HOURS; hour++)
@@ -1335,9 +1328,9 @@ void PandemicSim::doWeekend_wholeDay()
 	weekend_doInfectedSetup_wholeDay();
 	if(SIM_VALIDATION)
 	{
-		debug_copyErrandLookup();
-		debug_testErrandRegen_weekend();
+	//	debug_testErrandRegen_weekend();
 	}
+
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
 

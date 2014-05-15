@@ -146,8 +146,6 @@ public:
 	kval_type_t * daily_contact_kval_types_ptr;
 	thrust::device_vector<errandSchedule_t> daily_contact_locations;
 	errandSchedule_t * daily_contact_locations_ptr;
-
-
 	thrust::device_vector<action_t> daily_action_type;
 	action_t * daily_action_type_ptr;
 
@@ -199,19 +197,15 @@ public:
 	void validateContacts_wholeDay();
 	void debug_copyFixedData();
 	void debug_sizeHostArrays();
-	void debug_copyErrandLookup();
+	void debug_generateErrandLookup();
 
 
-	void debug_dumpInfectedErrandLocs();
-	void debug_validateInfectedLocArrays();
 	void debug_validateErrandSchedule();
-	void debug_doublecheckContact_usingPeopleTable(int pos, int number_hours, int infector, int victim);
 
 	void debug_dumpWeekendErrandTables(h_vec * h_sorted_people, h_vec * h_sorted_hours, h_vec * h_sorted_dests);
 
 	void debug_validatePeopleSetup();
 	void debug_freshenPeopleStatus();
-	void debug_freshenErrands();
 	void debug_freshenInfected();
 	void debug_freshenContacts();
 	void debug_freshenActions();
