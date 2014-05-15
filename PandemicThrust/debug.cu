@@ -96,7 +96,7 @@ void PandemicSim::debug_sizeHostArrays()
 		profiler.beginFunction(current_day, "debug_sizeHostArrays");
 
 	h_people_households.resize(people_households.size());
-//	h_people_workplaces.resize(people_workplaces.size());
+	h_people_workplaces.resize(number_people);
 	h_people_age.resize(people_ages.size());
 
 	h_infected_indexes.resize(infected_indexes.size());
@@ -126,8 +126,8 @@ void PandemicSim::debug_sizeHostArrays()
 	h_actions_rand3.resize(debug_contactsToActions_float3.size());
 	h_actions_rand4.resize(debug_contactsToActions_float4.size());
 
-	h_errand_people_table.resize(errand_people_table.size());
-	h_people_errands.resize(people_errands.size());
+	h_errand_people_table.resize(errand_people_table_a.size());
+	h_people_errands.resize(people_errands_a.size());
 
 	h_errand_locationOffsets_multiHour.resize(errand_locationOffsets.size());
 
@@ -596,7 +596,7 @@ void PandemicSim::debug_validateLocationArrays()
 	int num_errands_total = num_all_errands_today();
 
 	thrust::host_vector<locId_t> h_sorted_errands(num_errands_total);
-	thrust::copy_n(people_errands.begin(), num_errands_total, h_sorted_errands.begin());
+	thrust::copy_n(people_errands_a.begin(), num_errands_total, h_sorted_errands.begin());
 
 	thrust::copy_n(errand_locationOffsets.begin(), number_workplaces * errand_hours_today(), h_errand_locationOffsets_multiHour.begin());
 

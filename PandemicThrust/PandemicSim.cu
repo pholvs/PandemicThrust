@@ -1072,8 +1072,12 @@ void PandemicSim::setup_sizeGlobalArrays()
 
 	//weekend errands arrays tend to be very large, so pre-allocate them
 	int num_weekend_errands = number_people * NUM_WEEKEND_ERRANDS;
-	errand_people_table.resize(num_weekend_errands);
-	people_errands.resize(num_weekend_errands);
+	errand_people_table_a.resize(num_weekend_errands);
+	errand_people_table_b.resize(num_weekend_errands);
+	people_errands_a.resize(num_weekend_errands);
+	people_errands_b.resize(num_weekend_errands);
+	setup_configCubBuffers();
+	setup_sizeCubTempArray();
 
 //	infected_errands.resize(num_weekend_errands);
 
@@ -1202,30 +1206,45 @@ void PandemicSim::doWeekday_wholeDay()
 	}
 
 	//generate location arrays for each hour
-	for(int hour = 0; hour < NUM_WEEKDAY_ERRAND_HOURS; hour++)
+	/*for(int hour = 0; hour < NUM_WEEKDAY_ERRAND_HOURS; hour++)
 	{
 		int people_offset_start = hour * number_people;
 		int people_offset_end = (hour+1) * number_people;
 
+		//int * errand_people_ptr = (int *) errand_people_doubleBuffer
+
 		//write sequential blocks of indexes, i.e. 0 1 2 0 1 2
 		thrust::sequence(
-			errand_people_table.begin() + people_offset_start,
-			errand_people_table.begin() + people_offset_end);
+			errand_people_doubleBuffer.Current() + people_offset_start,
+			errand_people_doubleBuffer.Current() + people_offset_end);
+	}*/
 
-		//sort the indexes by destination
-		thrust::sort_by_key(
-			people_errands.begin() + people_offset_start,	//key.begin
-			people_errands.begin() + people_offset_end,		//key.end
-			errand_people_table.begin() + people_offset_start);			//vals.begin
-	}
+	int num_errands =  (2 * number_people);
+	cub::DeviceRadixSort::SortPairs(
+		errand_sorting_tempStorage, errand_sorting_tempStorage_size, //temp buffer
+		people_errands_doubleBuffer, errand_people_doubleBuffer,	//key, val
+		num_errands);	//N
+
 
 	thrust::counting_iterator<locId_t> count_it(0);
+	thrust::device_vector<locId_t>::iterator errands_iterator;
+
+	if(people_errands_doubleBuffer.selector == 0)
+	{
+		errands_iterator = people_errands_a.begin();
+	}
+	else
+	{
+		errands_iterator = people_errands_b.begin();
+	}
+
 	thrust::lower_bound(
-			people_errands.begin(),
-			people_errands.begin() + (2 * number_people),
+			errands_iterator,
+			errands_iterator + num_errands,
 			count_it,
 			count_it + (NUM_WEEKDAY_ERRAND_HOURS * number_workplaces),
 			errand_locationOffsets.begin());
+
 	errand_locationOffsets[NUM_WEEKDAY_ERRAND_HOURS * number_workplaces] = (NUM_WEEKDAY_ERRANDS * number_people);
 
 //	debug_dump_array_toTempFile("../sorted_dests.txt", "errand_dest", &errand_people_destinations, number_people * NUM_WEEKDAY_ERRAND_HOURS);
@@ -1248,7 +1267,7 @@ void PandemicSim::doWeekday_wholeDay()
 		infected_indexes_ptr,people_ages_ptr,
 		people_households_ptr,household_offsets_ptr,
 		workplace_offsets_ptr,workplace_people_ptr,
-		errand_locationOffsets_ptr, errand_people_table_ptr,
+		errand_locationOffsets_ptr, errand_people_doubleBuffer.Current(),
 		people_status_pandemic_ptr,people_status_seasonal_ptr,
 		people_days_pandemic_ptr,people_days_seasonal_ptr,
 		people_gens_pandemic_ptr,people_gens_seasonal_ptr,
@@ -1303,10 +1322,10 @@ void PandemicSim::doWeekend_wholeDay()
 	const int num_weekend_errands_total = NUM_WEEKEND_ERRANDS * number_people;
 
 	//now sort the errand_people array into a large multi-hour location table
-	thrust::sort_by_key(
-		people_errands.begin(),	//key.begin
-		people_errands.begin() + num_weekend_errands_total,		//key.end
-		errand_people_table.begin());									//data
+	cub::DeviceRadixSort::SortPairs(
+		errand_sorting_tempStorage, errand_sorting_tempStorage_size,
+		people_errands_doubleBuffer,errand_people_doubleBuffer,
+		num_weekend_errands_total);
 
 	if(SIM_PROFILING)
 		profiler.endFunction(current_day, number_people);
@@ -1321,12 +1340,24 @@ void PandemicSim::doWeekend_wholeDay()
 
 	//find how many people are going on errands during each hour
 	thrust::counting_iterator<locId_t> count_it(0);
+	thrust::device_vector<locId_t>::iterator errands_iterator;
+
+	if(people_errands_doubleBuffer.selector == 0)
+	{
+		errands_iterator = people_errands_a.begin();
+	}
+	else
+	{
+		errands_iterator = people_errands_b.begin();
+	}
+
 	thrust::lower_bound(
-		people_errands.begin(),
-		people_errands.begin() + num_weekend_errands_total,
+		errands_iterator,
+		errands_iterator + num_weekend_errands_total,
 		count_it,
 		count_it + (number_workplaces * NUM_WEEKEND_ERRAND_HOURS),
 		errand_locationOffsets.begin());
+
 	errand_locationOffsets[number_workplaces * NUM_WEEKEND_ERRAND_HOURS] = (NUM_WEEKEND_ERRANDS * number_people);
 
 	if(SIM_PROFILING)
@@ -1356,7 +1387,7 @@ void PandemicSim::doWeekend_wholeDay()
 	kernel_weekend_sharedMem<<<blocks,threads,smem_size>>>(
 		infected_count,	infected_indexes_ptr,
 		people_households_ptr,household_offsets_ptr,
-		errand_locationOffsets_ptr,errand_people_table_ptr,
+		errand_locationOffsets_ptr, errand_people_doubleBuffer.Current(),
 		people_status_pandemic_ptr,people_status_seasonal_ptr,
 		people_days_pandemic_ptr,people_days_seasonal_ptr,
 		people_gens_pandemic_ptr,people_gens_seasonal_ptr,
@@ -1421,7 +1452,7 @@ void PandemicSim::weekend_assignErrands()
 	host_randOffsetsStruct->errand_randOffset = rand_offset;
 	cudaMemcpyToSymbolAsync(device_randOffsetsStruct,host_randOffsetsStruct,sizeof(simRandOffsetsStruct_t),0,cudaMemcpyHostToDevice);
 
-	kernel_assignWeekendErrands<<<cuda_blocks,cuda_threads>>>(errand_people_table_ptr , people_errands_ptr, number_people, number_workplaces, rand_offset);
+	kernel_assignWeekendErrands<<<cuda_blocks,cuda_threads>>>(errand_people_doubleBuffer.Current() , people_errands_doubleBuffer.Current(), number_people, number_workplaces, rand_offset);
 
 	int rand_counts_consumed = 2 * number_people;
 	rand_offset += rand_counts_consumed;
@@ -2248,11 +2279,28 @@ void PandemicSim::final_countReproduction()
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"final_countReproduction");
 
+	cub::DoubleBuffer<gen_t> gen_pandemic_doubleBuffer;
+	gen_pandemic_doubleBuffer.selector = 0;
+	gen_pandemic_doubleBuffer.d_buffers[0] = thrust::raw_pointer_cast(people_gens_pandemic.data());	//input: gens_p
+//	gen_t * sorted_gens_p_ptr = (gen_t *) thrust::raw_pointer_cast(people_errands_a.data());
+	gen_pandemic_doubleBuffer.d_buffers[1] = (gen_t *) thrust::raw_pointer_cast(people_days_pandemic.data());
+
+	cub::DoubleBuffer<gen_t> gen_seasonal_doubleBuffer;
+	gen_seasonal_doubleBuffer.selector = 0;
+	gen_seasonal_doubleBuffer.d_buffers[0] = thrust::raw_pointer_cast(people_gens_seasonal.data());	//input: gens_s
+//	gen_t * sorted_gens_s_ptr = (gen_t *) thrust::raw_pointer_cast(people_errands_b.data());
+	gen_seasonal_doubleBuffer.d_buffers[1] = (gen_t *) thrust::raw_pointer_cast(people_days_seasonal.data());
+
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"final_countReproduction_sort");
 
-	thrust::sort(people_gens_pandemic.begin(), people_gens_pandemic.end());
-	thrust::sort(people_gens_seasonal.begin(), people_gens_seasonal.end());
+	cub::DeviceRadixSort::SortKeys(
+		errand_sorting_tempStorage, errand_sorting_tempStorage_size, //temp buffer
+		gen_pandemic_doubleBuffer, 	number_people);	//vals, N
+
+	cub::DeviceRadixSort::SortKeys(
+		errand_sorting_tempStorage, errand_sorting_tempStorage_size, //temp buffer
+		gen_seasonal_doubleBuffer, 	number_people);	//vals, N
 		
 	if(SIM_PROFILING)
 		profiler.endFunction(-1,number_people);
@@ -2260,21 +2308,21 @@ void PandemicSim::final_countReproduction()
 	if(SIM_PROFILING)
 		profiler.beginFunction(-1,"final_countReproduction_genSearch");
 
-	thrust::counting_iterator<int> count_it(0);
-
+	thrust::counting_iterator<day_t> count_it(0);
 	vec_t pandemic_gen_counts(MAX_DAYS + 1);
-	pandemic_gen_counts[MAX_DAYS] = number_people;
+	vec_t seasonal_gen_counts(MAX_DAYS + 1);
+
 	thrust::lower_bound(
-		people_gens_pandemic.begin(), people_gens_pandemic.end(),
+		people_days_pandemic.begin(), people_days_pandemic.begin() + number_people,
 		count_it, count_it + MAX_DAYS,
 		pandemic_gen_counts.begin());
-
-	vec_t seasonal_gen_counts(MAX_DAYS + 1);
-	seasonal_gen_counts[MAX_DAYS] = number_people;
 	thrust::lower_bound(
-		people_gens_seasonal.begin(), people_gens_seasonal.end(),
+		people_days_seasonal.begin(), people_days_seasonal.begin() + number_people,
 		count_it, count_it + MAX_DAYS,
 		seasonal_gen_counts.begin());
+
+	pandemic_gen_counts[MAX_DAYS] = number_people;
+	seasonal_gen_counts[MAX_DAYS] = number_people;
 
 	if(SIM_PROFILING)
 		profiler.endFunction(-1,number_people);
@@ -2678,9 +2726,9 @@ void PandemicSim::setup_fetchVectorPtrs()
 
 	household_offsets_ptr = thrust::raw_pointer_cast(household_offsets.data());
 
-	errand_people_table_ptr = thrust::raw_pointer_cast(errand_people_table.data());
+	//errand_people_table_ptr = thrust::raw_pointer_cast(errand_people_table_a.data());
 	
-	people_errands_ptr = thrust::raw_pointer_cast(people_errands.data());
+	//people_errands_ptr = thrust::raw_pointer_cast(people_errands_a.data());
 
 //	infected_errands_ptr = thrust::raw_pointer_cast(infected_errands.data());
 
@@ -2700,14 +2748,14 @@ void PandemicSim::setup_fetchVectorPtrs()
 	host_arrayPtrStruct->people_ages = thrust::raw_pointer_cast(people_ages.data());
 	host_arrayPtrStruct->people_households = thrust::raw_pointer_cast(people_households.data());
 //	host_arrayPtrStruct->people_workplaces = thrust::raw_pointer_cast(people_workplaces.data());
-	host_arrayPtrStruct->people_errands = thrust::raw_pointer_cast(people_errands.data());
+	host_arrayPtrStruct->people_errands = thrust::raw_pointer_cast(people_errands_a.data());
 
 	host_arrayPtrStruct->household_locOffsets = thrust::raw_pointer_cast(household_offsets.data());
 	host_arrayPtrStruct->workplace_locOffsets = thrust::raw_pointer_cast(workplace_offsets.data());
 	host_arrayPtrStruct->errand_locOffsets = thrust::raw_pointer_cast(errand_locationOffsets.data());
 
-	host_arrayPtrStruct->workplace_people = thrust::raw_pointer_cast(workplace_people.data());
-	host_arrayPtrStruct->errand_people = thrust::raw_pointer_cast(errand_people_table.data());
+//	host_arrayPtrStruct->workplace_people = thrust::raw_pointer_cast(workplace_people.data());
+//	host_arrayPtrStruct->errand_people = thrust::raw_pointer_cast(errand_people_table_a.data());
 
 //	host_arrayPtrStruct->workplace_max_contacts = thrust::raw_pointer_cast(workplace_max_contacts.data());
 
@@ -3000,7 +3048,7 @@ __device__ void device_assignAfterschoolOrErrandDests_weekday(
 
 __global__ void kernel_assignWeekdayAfterschoolAndErrands(
 	age_t * people_ages_arr, int number_people, int num_locations,
-	locId_t * errand_schedule_array,
+	locId_t * errand_schedule_array, personId_t * errand_people_array,
 	randOffset_t rand_offset)
 {
 	threefry2x64_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
@@ -3010,6 +3058,7 @@ __global__ void kernel_assignWeekdayAfterschoolAndErrands(
 	} u;
 
 	locId_t * errand_schedule_array_hour2 = errand_schedule_array + number_people;
+	personId_t * errand_people_array_hour2 = errand_people_array + number_people;
 
 	//for each adult
 	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <= number_people / 2; myGridPos += gridDim.x * blockDim.x)
@@ -3027,6 +3076,9 @@ __global__ void kernel_assignWeekdayAfterschoolAndErrands(
 				myAge, num_locations,
 				errand_schedule_array + myIdx_1,
 				errand_schedule_array_hour2 + myIdx_1);
+
+			errand_people_array[myIdx_1] = myIdx_1;
+			errand_people_array_hour2[myIdx_1] = myIdx_1;
 		}
 
 		personId_t myIdx_2 = myIdx_1 + 1;
@@ -3038,6 +3090,9 @@ __global__ void kernel_assignWeekdayAfterschoolAndErrands(
 				myAge, num_locations,
 				errand_schedule_array + myIdx_2,
 				errand_schedule_array_hour2 + myIdx_2);
+
+			errand_people_array[myIdx_2] = myIdx_2;
+			errand_people_array_hour2[myIdx_2] = myIdx_2;
 		}
 	}
 }
@@ -3054,7 +3109,7 @@ void PandemicSim::weekday_generateAfterschoolAndErrandDestinations()
 	int threads = cuda_doWeekdayErrandAssignment_threads;
 
 	kernel_assignWeekdayAfterschoolAndErrands<<<blocks,threads>>>
-		(people_ages_ptr, number_people, number_workplaces, people_errands_ptr, rand_offset);
+		(people_ages_ptr, number_people, number_workplaces, people_errands_doubleBuffer.Current(), errand_people_doubleBuffer.Current(), rand_offset);
 
 	if(TIMING_BATCH_MODE == 0)
 	{
@@ -3829,7 +3884,7 @@ void PandemicSim::setup_assignWorkplaces()
 	assignWorkplaceFunctor wp_functor;
 	wp_functor.functor_rand_offset = rand_offset;
 	wp_functor.number_people = number_people;
-	wp_functor.people_workplaces_arr = people_errands_ptr;			//generate into errands array temporarily
+	wp_functor.people_workplaces_arr = thrust::raw_pointer_cast(people_errands_a.data());			//generate into errands array temporarily
 	wp_functor.people_ages_arr = people_ages_ptr;
 
 	thrust::counting_iterator<int> count_it(0);
@@ -3841,21 +3896,40 @@ void PandemicSim::setup_assignWorkplaces()
 		rand_offset += rand_counts_consumed_2;
 	}
 
-	thrust::sequence(workplace_people.begin(), workplace_people.begin() + number_people);
+	//IDEA: we want the sorted people IDs to end up in workplace_people, so we will write them into the errand
+	//array and then set the output buffer as workplace_people
 
-	//sort people by workplace
-	thrust::sort_by_key(
-		people_errands.begin(),
-		people_errands.begin() + number_people,
-		workplace_people.begin());
+	errand_people_doubleBuffer.selector = 0;
+	errand_people_doubleBuffer.d_buffers[1] = thrust::raw_pointer_cast(workplace_people.data());
+	thrust::sequence(errand_people_table_a.begin(), errand_people_table_a.begin() + number_people);
+	people_errands_doubleBuffer.selector = 0;	//select array A
 
-	thrust::lower_bound(		//find lower bound of each location
-		people_errands.begin(),
-		people_errands.begin() + number_people,
+	cub::DeviceRadixSort::SortPairs(
+		errand_sorting_tempStorage, errand_sorting_tempStorage_size, //temp buffer
+		people_errands_doubleBuffer, errand_people_doubleBuffer,	//key, val
+		number_people);	//N
+
+	thrust::device_vector<locId_t>::iterator loc_iterator;
+	if(people_errands_doubleBuffer.selector == 0)
+	{
+		loc_iterator = people_errands_a.begin();
+	}
+	else
+	{
+		loc_iterator = people_errands_b.begin();
+	}
+
+	//find lower bound of each location
+	thrust::lower_bound(		
+		loc_iterator,
+		loc_iterator + number_people,
 		count_it,
 		count_it + number_workplaces,
 		workplace_offsets.begin());
 	workplace_offsets[number_workplaces] = number_people;
+
+	//now set the buffers back up properly
+	setup_configCubBuffers();
 
 	if(SIM_PROFILING)
 		profiler.endFunction(-1,number_people);
@@ -3955,4 +4029,33 @@ void PandemicSim::debug_testErrandRegen_weekend()
 
 //	bool errands_match = thrust::equal(infected_errands.begin(), infected_errands.begin() + (NUM_WEEKEND_ERRANDS * infected_count),inf_locs_copy.begin());
 //	debug_assert(errands_match, "errend regen method does not match infected locs array");
+}
+
+void PandemicSim::setup_sizeCubTempArray()
+{
+	errand_sorting_tempStorage = NULL;
+	errand_sorting_tempStorage_size = 0;
+
+	int num_errands = NUM_WEEKEND_ERRANDS * number_people;
+
+	cub::DeviceRadixSort::SortPairs(errand_sorting_tempStorage, errand_sorting_tempStorage_size, people_errands_doubleBuffer,errand_people_doubleBuffer,num_errands);
+
+	//printf("cub needs %Iu megabytes to sort\n",temp_storage_bytes >> 20);
+
+	cudaError_t result = cudaMalloc(&errand_sorting_tempStorage,errand_sorting_tempStorage_size);
+	if(result != cudaSuccess)
+	{
+		fprintf(stderr,"cudaMalloc failed to allocate temp space for cub, error: %s\n",cudaGetErrorString(result));
+		exit(result);
+	}
+}
+
+void PandemicSim::setup_configCubBuffers()
+{
+	errand_people_doubleBuffer.d_buffers[0] = thrust::raw_pointer_cast(errand_people_table_a.data());
+	errand_people_doubleBuffer.d_buffers[1] = thrust::raw_pointer_cast(errand_people_table_b.data());
+	errand_people_doubleBuffer.selector = 0;
+	people_errands_doubleBuffer.d_buffers[0] = thrust::raw_pointer_cast(people_errands_a.data());
+	people_errands_doubleBuffer.d_buffers[1] = thrust::raw_pointer_cast(people_errands_b.data());
+	errand_people_doubleBuffer.selector = 0;
 }

@@ -26,7 +26,7 @@
 
 //sim_validation must be 1 to log things
 #ifndef SIM_VALIDATION
-#define SIM_VALIDATION 1
+#define SIM_VALIDATION 0
 #endif
 
 #define FLUSH_VALIDATION_IMMEDIATELY 0
@@ -78,6 +78,8 @@ public:
 	void setup_buildFixedLocations();
 	void setup_sizeGlobalArrays();
 	void setup_fetchVectorPtrs();
+	void setup_configCubBuffers();
+	void setup_sizeCubTempArray();
 
 	void setup_scaleSimulation();
 	void setup_setCudaTopology();
@@ -166,10 +168,16 @@ public:
 	thrust::device_vector<locOffset_t> household_offsets;
 	locOffset_t * household_offsets_ptr;
 
-	thrust::device_vector<personId_t> errand_people_table;		//people_array for errands
-	personId_t * errand_people_table_ptr;
-	thrust::device_vector<locId_t> people_errands;
-	locId_t * people_errands_ptr;
+	thrust::device_vector<personId_t> errand_people_table_a;		//people_array for errands
+	thrust::device_vector<personId_t> errand_people_table_b;
+	cub::DoubleBuffer<personId_t> errand_people_doubleBuffer;
+	//personId_t * errand_people_table_ptr;
+	thrust::device_vector<locId_t> people_errands_a;
+	thrust::device_vector<locId_t> people_errands_b;
+	cub::DoubleBuffer<locId_t> people_errands_doubleBuffer;
+	void * errand_sorting_tempStorage;
+	size_t errand_sorting_tempStorage_size;
+	//locId_t * people_errands_ptr;
 
 //	thrust::device_vector<locId_t> infected_errands;
 //	locId_t * infected_errands_ptr;
@@ -292,7 +300,7 @@ __device__ void device_nullFillContact(personId_t * output_victim_idx, kval_type
 
 
 //weekday errand assignment
-__global__ void kernel_assignWeekdayAfterschoolAndErrands(age_t * people_ages_arr, int number_people, int num_locations, locId_t * errand_schedule_array, randOffset_t rand_offset);
+__global__ void kernel_assignWeekdayAfterschoolAndErrands(age_t * people_ages_arr, int number_people, int num_locations, locId_t * errand_schedule_array, personId_t * errand_people_array, randOffset_t rand_offset);
 __device__ void device_assignAfterschoolOrErrandDests_weekday(unsigned int rand_val1, unsigned int rand_val2,age_t myAge,  int num_locations, locId_t * output_dest1, locId_t * output_dest2);
 __device__ locId_t device_fishAfterschoolOrErrandDestination_weekday(unsigned int rand_val, age_t myAge);
 
