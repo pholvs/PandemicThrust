@@ -1284,7 +1284,7 @@ void PandemicSim::doWeekday_wholeDay()
 	kernel_weekday_sharedMem<<<blocks,threads,smem_size>>> (infected_count,
 		infected_indexes_ptr,people_ages_ptr,
 		people_households_ptr,household_offsets_ptr,
-		workplace_max_contacts_ptr,people_workplaces_ptr,
+		workplace_max_contacts_ptr,
 		workplace_offsets_ptr,workplace_people_ptr,
 		errand_locationOffsets_ptr, errand_people_table_ptr,
 		people_status_pandemic_ptr,people_status_seasonal_ptr,
@@ -1649,7 +1649,7 @@ int roundHalfUp_toInt(double d)
 __device__ kval_t device_makeContacts_weekday(
 	personId_t myIdx, age_t myAge,
 	locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-	maxContacts_t * workplace_max_contacts, locId_t * workplace_lookup,
+	maxContacts_t * workplace_max_contacts,
 	locOffset_t * workplace_offsets, personId_t * workplace_people,
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	personId_t * output_victim_arr, kval_type_t * output_kval_arr,
@@ -1725,9 +1725,8 @@ __device__ kval_t device_makeContacts_weekday(
 		contacts_made += contacts_desired;
 		
 #if SIM_VALIDATION == 1
-		locId_t wp = workplace_lookup[myIdx];
 		for(int c = 0; c < contacts_desired; c++)
-			output_contact_location[3 + c] = wp;
+			output_contact_location[3 + c] = loc_wp;
 #endif
 
 		kval_type_t kval_type = CONTACT_TYPE_WORKPLACE;
@@ -3276,7 +3275,7 @@ __device__ void device_doContactsToActions_immediately(
 
 __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
 										   locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-										   maxContacts_t * workplace_max_contacts, locId_t * workplace_lookup, 
+										   maxContacts_t * workplace_max_contacts,
 										   locOffset_t * workplace_offsets, personId_t * workplace_people,
 										   locOffset_t * errand_loc_offsets, personId_t * errand_people,
 										   status_t * people_status_p_arr, status_t * people_status_s_arr,
@@ -3330,7 +3329,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 		kval_t kval_sum = device_makeContacts_weekday(
 			myIdx, myAge,
 			household_lookup, household_offsets,// household_people,
-			workplace_max_contacts, workplace_lookup, 
+			workplace_max_contacts,
 			workplace_offsets, workplace_people,
 			errand_loc_offsets, errand_people,
 			myVictimArray, myKvalArray,

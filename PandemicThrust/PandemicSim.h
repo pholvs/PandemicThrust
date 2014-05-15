@@ -355,7 +355,7 @@ void debug_assert(bool condition, char * message, int idx);
 
 __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
 										 locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-										 maxContacts_t * workplace_max_contacts, locId_t * workplace_lookup, 
+										 maxContacts_t * workplace_max_contacts,
 										 locOffset_t * workplace_offsets, personId_t * workplace_people,
 										 locOffset_t * errand_loc_offsets, personId_t * errand_people,
 										 status_t * people_status_p_arr, status_t * people_status_s_arr,
@@ -373,7 +373,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 __device__ kval_t device_makeContacts_weekday(
 	personId_t myIdx, age_t myAge,
 	locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-	maxContacts_t * workplace_max_contacts, locId_t * workplace_lookup,
+	maxContacts_t * workplace_max_contacts,
 	locOffset_t * workplace_offsets, personId_t * workplace_people,
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	personId_t * output_victim_arr, kval_type_t * output_kval_arr,

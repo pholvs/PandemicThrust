@@ -13,10 +13,10 @@ typedef unsigned char gen_t;
 typedef unsigned char errandContactsProfile_t;
 typedef unsigned char kval_type_t;
 
-typedef int locId_t;
-typedef int locOffset_t;
 
 typedef int errandSchedule_t;
+typedef errandSchedule_t locId_t;
+typedef int locOffset_t;
 typedef int maxContacts_t;  
 
 typedef int action_t;	//could be smaller, but only stored in validation mode
