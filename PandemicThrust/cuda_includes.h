@@ -4,6 +4,8 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
+#define CUB_STDERR
+
 #include "stdafx.h"
 
 #include <thrust/host_vector.h>
@@ -28,3 +30,6 @@
 #include <thrust/transform.h>
 #include <thrust/scan.h>
 #include <thrust/count.h>
+
+#include <cub/util_allocator.cuh>
+#include <cub/device/device_radix_sort.cuh>

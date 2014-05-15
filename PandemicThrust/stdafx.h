@@ -9,4 +9,4 @@
 #include <climits>
 #include <time.h>
 
-#include "threefry.h"
+#include <Random123/threefry.h>
