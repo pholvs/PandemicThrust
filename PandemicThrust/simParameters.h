@@ -1,7 +1,6 @@
 #pragma once
 
-#include <thrust/pair.h>
-
+typedef int SEED_T;
 typedef unsigned long randOffset_t;
 
 typedef int personId_t;
@@ -87,3 +86,57 @@ typedef unsigned int status_t;
 //the first row of the PDF with a value > 0
 #define FIRST_WEEKDAY_ERRAND_ROW 9
 #define FIRST_WEEKEND_ERRAND_ROW 9
+
+#define CULMINATION_PERIOD 10
+#define NUM_BUSINESS_TYPES 14
+#define CHILD_DATA_ROWS 5
+#define HH_TABLE_ROWS 9
+
+#define MAX_CONTACTS_WEEKDAY 8
+#define MAX_CONTACTS_WEEKEND 5
+#define MAX_POSSIBLE_CONTACTS_PER_DAY __max(MAX_CONTACTS_WEEKDAY, MAX_CONTACTS_WEEKEND)
+
+#define SEED_LENGTH 4
+#define UNSIGNED_MAX (unsigned int) -1
+
+struct simArrayPtrStruct_t{
+	status_t * people_status_pandemic;
+	status_t * people_status_seasonal;
+	day_t * people_days_pandemic;
+	day_t * people_days_seasonal;
+	gen_t * people_gens_pandemic;
+	gen_t * people_gens_seasonal;
+
+	age_t * people_ages;
+	locId_t * people_workplaces;
+	locId_t * people_households;
+	errandSchedule_t * people_errands;
+
+
+	locOffset_t * household_locOffsets;
+	locOffset_t * workplace_locOffsets;
+	locOffset_t * errand_locOffsets;
+
+	personId_t * workplace_people;
+	personId_t * errand_people;
+
+	maxContacts_t * workplace_max_contacts;
+};
+
+struct simSizeConstantsStruct_t {
+	int number_people, number_households, number_workplaces;
+};
+
+struct  simRandOffsetsStruct_t{
+	randOffset_t workplace_randOffset, errand_randOffset;
+};
+
+struct simDebugArrayPtrStruct_t{
+	personId_t * contact_infectors, * contact_victims;
+	kval_type_t * contact_kval_types;
+	action_t * contact_actions;
+	errandSchedule_t * contact_locations;
+
+	float *float1,*float2,*float3,*float4;
+
+};

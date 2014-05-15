@@ -7,6 +7,7 @@
 #include "thrust_functors.h"
 #include <algorithm>
 
+#include "host_functions.h"
 
 
 h_vec h_infected_indexes;
@@ -37,7 +38,6 @@ int errand_lookup_freshness = -2;
 
 thrust::host_vector<personId_t> h_errand_people_table;
 thrust::host_vector<errandSchedule_t> h_infected_errands_array;
-thrust::host_vector<errandContactsProfile_t> h_errand_infected_contactsDesired;
 h_vec h_errand_locationOffsets_multiHour;
 int h_errand_data_freshness = -2;
 
@@ -116,7 +116,6 @@ void PandemicSim::debug_sizeHostArrays()
 	h_people_errands.resize(people_errands.size());
 
 	h_infected_errands_array.resize(infected_errands.size());
-	h_errand_infected_contactsDesired.resize(errand_infected_ContactsDesired.size());
 
 	h_errand_locationOffsets_multiHour.resize(errand_locationOffsets.size());
 
@@ -220,6 +219,8 @@ void PandemicSim::validateContacts_wholeDay()
 				//begin type-specific checks
 				if (contact_type == CONTACT_TYPE_WORKPLACE)
 				{
+					locId_t wp_infector = host_recalcWorkplace(infected_index,infector_age);
+					locId_t wp_victim = host_recalcWorkplace(contact_victim,victim_age);
 					infector_loc = h_people_workplaces[contact_infector];
 					victim_loc = h_people_workplaces[contact_victim];
 
@@ -891,7 +892,6 @@ void PandemicSim::debug_freshenErrands()
 	{
 		int infected_errands_to_copy = num_infected_errands_today();
 		thrust::copy_n(infected_errands.begin(),infected_errands_to_copy,h_infected_errands_array.begin());
-		thrust::copy_n(errand_infected_ContactsDesired.begin(), infected_count, h_errand_infected_contactsDesired.begin());
 
 		h_errand_data_freshness = current_day;
 	}

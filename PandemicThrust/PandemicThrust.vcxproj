@@ -191,6 +191,8 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <CudaCompile Include="profiler.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cuda_includes.h" />
+    <ClInclude Include="host_functions.h" />
     <ClInclude Include="indirect.h" />
     <ClInclude Include="PandemicSim.h" />
     <ClInclude Include="profiler.h" />
@@ -203,6 +205,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <ClInclude Include="thrust_functors.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="host_functions.cpp" />
     <ClCompile Include="sql_logging.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
     </ClCompile>
