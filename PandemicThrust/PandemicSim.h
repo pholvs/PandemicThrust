@@ -111,8 +111,8 @@ public:
 	thrust::device_vector<status_t> people_status_seasonal;
 	status_t * people_status_seasonal_ptr;
 
-	thrust::device_vector<locId_t> people_workplaces;
-	locId_t * people_workplaces_ptr;
+//	thrust::device_vector<locId_t> people_workplaces;
+//	locId_t * people_workplaces_ptr;
 	thrust::device_vector<locId_t> people_households;
 	locId_t * people_households_ptr;
 
@@ -134,7 +134,11 @@ public:
 	int INITIAL_INFECTED_PANDEMIC;
 	int INITIAL_INFECTED_SEASONAL;
 
-	int infected_count;	
+	int infected_count;
+
+	float max_infected_proportion;
+	int expected_max_infected;
+
 	thrust::device_vector<personId_t> infected_indexes;
 	personId_t * infected_indexes_ptr;
 
@@ -156,8 +160,8 @@ public:
 	locOffset_t * workplace_offsets_ptr;
 	thrust::device_vector<personId_t> workplace_people;
 	personId_t * workplace_people_ptr;
-	thrust::device_vector<maxContacts_t> workplace_max_contacts;
-	maxContacts_t * workplace_max_contacts_ptr;
+//	thrust::device_vector<maxContacts_t> workplace_max_contacts;
+//	maxContacts_t * workplace_max_contacts_ptr;
 
 	thrust::device_vector<locOffset_t> household_offsets;
 	locOffset_t * household_offsets_ptr;
@@ -167,8 +171,8 @@ public:
 	thrust::device_vector<locId_t> people_errands;
 	locId_t * people_errands_ptr;
 
-	thrust::device_vector<locId_t> infected_errands;
-	locId_t * infected_errands_ptr;
+//	thrust::device_vector<locId_t> infected_errands;
+//	locId_t * infected_errands_ptr;
 
 	thrust::device_vector<locOffset_t> errand_locationOffsets;
 	locOffset_t * errand_locationOffsets_ptr;
@@ -256,9 +260,9 @@ public:
 };
 
 #define day_of_week() (current_day % 7)
-//#define is_weekend() (day_of_week() >= 5)
+#define is_weekend() (day_of_week() >= 5)
 //#define is_weekend() (1)
-#define is_weekend() (current_day % 1 == 1)
+//#define is_weekend() (current_day % 1 == 1)
 
 #define errand_hours_today() (is_weekend() ? NUM_WEEKEND_ERRAND_HOURS : NUM_WEEKDAY_ERRAND_HOURS)
 
@@ -282,7 +286,7 @@ int roundHalfUp_toInt(double d);
 __device__ personId_t device_getVictimAtIndex(personId_t index_to_fetch, personId_t * location_people, kval_type_t contact_type);
 __device__ kval_t device_selectRandomPersonFromLocation(personId_t infector_idx, personId_t loc_offset, int loc_count, unsigned int rand_val, kval_type_t desired_kval, personId_t * location_people_arr, personId_t * output_victim_idx_arr, kval_type_t * output_kval_arr);
 __device__ void device_lookupLocationData_singleHour(personId_t myIdx, locId_t * lookup_arr, locOffset_t * loc_offset_arr, locOffset_t * loc_offset, int * loc_count);
-__device__ void device_lookupWorkplaceData_singleHour(locId_t myLoc, locOffset_t * loc_offset_arr, maxContacts_t * loc_max_contacts_arr, 	locOffset_t * loc_offset, int * loc_count, maxContacts_t * loc_max_contacts);
+__device__ void device_lookupWorkplaceData_singleHour(locId_t myLoc, locOffset_t * loc_offset_arr, locOffset_t * loc_offset, int * loc_count, maxContacts_t * loc_max_contacts);
 __device__ void device_lookupErrandLocationData(locId_t myLoc, locOffset_t * loc_offset_arr, locOffset_t * output_loc_offset, int * output_loc_count);
 __device__ void device_nullFillContact(personId_t * output_victim_idx, kval_type_t * output_kval);
 
@@ -355,7 +359,6 @@ void debug_assert(bool condition, char * message, int idx);
 
 __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
 										 locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-										 maxContacts_t * workplace_max_contacts,
 										 locOffset_t * workplace_offsets, personId_t * workplace_people,
 										 locOffset_t * errand_loc_offsets, personId_t * errand_people,
 										 status_t * people_status_p_arr, status_t * people_status_s_arr,
@@ -373,7 +376,6 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 __device__ kval_t device_makeContacts_weekday(
 	personId_t myIdx, age_t myAge,
 	locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-	maxContacts_t * workplace_max_contacts,
 	locOffset_t * workplace_offsets, personId_t * workplace_people,
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	personId_t * output_victim_arr, kval_type_t * output_kval_arr,
@@ -428,7 +430,7 @@ __device__ void device_doContactsToActions_immediately(
 #endif
 	day_t current_day,randOffset_t myRandOffset);
 
-__device__ maxContacts_t device_getWorkplaceMaxContacts(locId_t errand, int number_locations);
+__device__ maxContacts_t device_getWorkplaceMaxContacts(locId_t errand);
 
 
 __device__ locId_t device_recalcWorkplace(personId_t myIdx, age_t myAge);

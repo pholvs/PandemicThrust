@@ -106,7 +106,7 @@ struct simArrayPtrStruct_t{
 	gen_t * people_gens_seasonal;
 
 	age_t * people_ages;
-	locId_t * people_workplaces;
+//	locId_t * people_workplaces;
 	locId_t * people_households;
 	locId_t * people_errands;
 
@@ -118,7 +118,7 @@ struct simArrayPtrStruct_t{
 	personId_t * workplace_people;
 	personId_t * errand_people;
 
-	maxContacts_t * workplace_max_contacts;
+//	maxContacts_t * workplace_max_contacts;
 };
 
 struct simSizeConstantsStruct_t {

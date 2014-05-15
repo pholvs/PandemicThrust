@@ -48,7 +48,7 @@ thrust::host_vector<age_t> h_people_age;
 
 h_vec h_workplace_offsets;
 thrust::host_vector<personId_t> h_workplace_people;
-h_vec h_workplace_max_contacts;
+//h_vec h_workplace_max_contacts;
 
 h_vec h_household_offsets;
 thrust::host_vector<personId_t> h_household_people;
@@ -82,7 +82,7 @@ void PandemicSim::debug_copyFixedData()
 
 	thrust::copy_n(workplace_offsets.begin(), number_workplaces + 1, h_workplace_offsets.begin());
 	thrust::copy_n(workplace_people.begin(), number_people, h_workplace_people.begin());
-	thrust::copy_n(workplace_max_contacts.begin(), number_workplaces, h_workplace_max_contacts.begin());
+//	thrust::copy_n(workplace_max_contacts.begin(), number_workplaces, h_workplace_max_contacts.begin());
 
 	thrust::copy_n(household_offsets.begin(), number_households + 1, h_household_offsets.begin());
 
@@ -96,7 +96,7 @@ void PandemicSim::debug_sizeHostArrays()
 		profiler.beginFunction(current_day, "debug_sizeHostArrays");
 
 	h_people_households.resize(people_households.size());
-	h_people_workplaces.resize(people_workplaces.size());
+//	h_people_workplaces.resize(people_workplaces.size());
 	h_people_age.resize(people_ages.size());
 
 	h_infected_indexes.resize(infected_indexes.size());
@@ -110,7 +110,7 @@ void PandemicSim::debug_sizeHostArrays()
 
 	h_workplace_offsets.resize(workplace_offsets.size());
 	h_workplace_people.resize(workplace_people.size());
-	h_workplace_max_contacts.resize(workplace_max_contacts.size());
+//	h_workplace_max_contacts.resize(workplace_max_contacts.size());
 
 	h_household_offsets.resize(household_offsets.size());
 
