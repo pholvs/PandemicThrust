@@ -1022,7 +1022,7 @@ __device__ void device_copyPeopleIndexes_weekend_wholeDay(personId_t * id_dest_p
 }
 
 //gets three UNIQUE errand hours 
-__device__ void device_generateWeekendErrands(errandSchedule_t * errand_output_ptr, randOffset_t myRandOffset)
+__device__ void device_generateWeekendErrands(locId_t * errand_output_ptr, randOffset_t myRandOffset)
 {
 	int num_locations = device_simSizeStruct->number_workplaces;
 
@@ -1057,7 +1057,7 @@ __device__ void device_generateWeekendErrands(errandSchedule_t * errand_output_p
 	errand_output_ptr[2] = device_fishWeekendErrandDestination(u.i[5]) + (hour3 * num_locations);
 }
 
-__device__ errandSchedule_t device_fishWeekendErrandDestination(unsigned int rand_val)
+__device__ locId_t device_fishWeekendErrandDestination(unsigned int rand_val)
 {
 	float y = (float) rand_val / UNSIGNED_MAX;
 
@@ -1256,7 +1256,7 @@ void PandemicSim::doWeekday_wholeDay()
 			errand_people_table.begin() + people_offset_start);			//vals.begin
 	}
 
-	thrust::counting_iterator<errandSchedule_t> count_it(0);
+	thrust::counting_iterator<locId_t> count_it(0);
 	thrust::lower_bound(
 			people_errands.begin(),
 			people_errands.begin() + (2 * number_people),
@@ -1358,7 +1358,7 @@ void PandemicSim::doWeekend_wholeDay()
 
 
 	//find how many people are going on errands during each hour
-	thrust::counting_iterator<errandSchedule_t> count_it(0);
+	thrust::counting_iterator<locId_t> count_it(0);
 	thrust::lower_bound(
 		people_errands.begin(),
 		people_errands.begin() + num_weekend_errands_total,
@@ -1477,21 +1477,21 @@ __device__ errandContactsProfile_t device_assignContactsDesired_weekday_wholeDay
 
 	return myProfile;
 }
-__device__ void device_copyInfectedErrandLocs_weekday(errandSchedule_t * errand_lookup_ptr, errandSchedule_t * infected_errand_ptr)
+__device__ void device_copyInfectedErrandLocs_weekday(locId_t * errand_lookup_ptr, locId_t * infected_errand_ptr)
 {
 	int num_people = device_simSizeStruct->number_people;
 	infected_errand_ptr[0] = errand_lookup_ptr[0];
 	infected_errand_ptr[1] = errand_lookup_ptr[num_people];
 }
 
-__device__ void device_doAllWeekdayInfectedSetup(int myPos, personId_t * infected_indexes_arr, errandSchedule_t * errand_scheduling_array, errandSchedule_t * output_infected_locs)
+__device__ void device_doAllWeekdayInfectedSetup(int myPos, personId_t * infected_indexes_arr, locId_t * errand_scheduling_array, locId_t * output_infected_locs)
 {
 	int myIdx = infected_indexes_arr[myPos];
 
 	int output_offset = 2 * myPos;
 	device_copyInfectedErrandLocs_weekday(errand_scheduling_array + myIdx, output_infected_locs + output_offset);
 }
-__global__ void kernel_doInfectedSetup_weekday_wholeDay(personId_t * infected_index_arr, int num_infected, errandSchedule_t * errand_scheduling_array, errandSchedule_t * infected_errands_array)
+__global__ void kernel_doInfectedSetup_weekday_wholeDay(personId_t * infected_index_arr, int num_infected, locId_t * errand_scheduling_array, locId_t * infected_errands_array)
 {
 	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected ; myPos += gridDim.x * blockDim.x)
 	{
@@ -1654,7 +1654,7 @@ __device__ kval_t device_makeContacts_weekday(
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	personId_t * output_victim_arr, kval_type_t * output_kval_arr,
 #if SIM_VALIDATION == 1
-	errandSchedule_t * output_contact_location,
+	locId_t * output_contact_location,
 #endif
 	randOffset_t myRandOffset)
 
@@ -1755,7 +1755,7 @@ __device__ kval_t device_makeContacts_weekday(
 			kval_type = CONTACT_TYPE_AFTERSCHOOL;
 
 		//look up our errands and get a contact profile
-		errandSchedule_t errand_dests[NUM_WEEKDAY_ERRANDS];
+		locId_t errand_dests[NUM_WEEKDAY_ERRANDS];
 		errandContactsProfile_t errand_contacts_profile = device_recalc_weekdayErrandDests_assignProfile(myIdx,myAge,errand_dests, errand_dests+1);
 
 		for(int hour = 0; hour < NUM_WEEKDAY_ERRAND_HOURS; hour++)
@@ -1806,7 +1806,7 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx,
 											  locOffset_t * errand_loc_offsets, personId_t * errand_people,
 											  personId_t * output_victim_ptr, kval_type_t * output_kval_ptr,
 #if SIM_VALIDATION == 1
-											  errandSchedule_t * output_contact_loc_ptr,
+											  locId_t * output_contact_loc_ptr,
 #endif
 											  randOffset_t myRandOffset)
 {
@@ -1868,13 +1868,13 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx,
 	rand_union_32.c = threefry2x32(tf_ctr_32, tf_k_32);
 
 
-	errandSchedule_t errand_dests[NUM_WEEKEND_ERRANDS];
+	locId_t errand_dests[NUM_WEEKEND_ERRANDS];
 	device_recalc_weekendErrandDests(myIdx,errand_dests);
 
 	kval_t errand_kval_sum = 0;
 	{
 		int errand_slot = WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_DEVICE[myContactsProfile][0]; //the errand number the contact will be made in
-		errandSchedule_t errand_loc = errand_dests[errand_slot];
+		locId_t errand_loc = errand_dests[errand_slot];
 
 #if SIM_VALIDATION == 1
 			output_contact_loc_ptr[3] = errand_loc;
@@ -1893,7 +1893,7 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx,
 	{
 		//do it again for the second errand contact
 		int errand_slot = WEEKEND_ERRAND_CONTACT_ASSIGNMENTS_DEVICE[myContactsProfile][1];
-		errandSchedule_t errand_loc = errand_dests[errand_slot];
+		locId_t errand_loc = errand_dests[errand_slot];
 
 #if SIM_VALIDATION == 1
 			output_contact_loc_ptr[4] = errand_loc;
@@ -1965,7 +1965,7 @@ __device__ void device_lookupWorkplaceData_singleHour(
 /// <param name="output_location_offset">Output: the offset from the start of the array to the first person at this location for this hour</param>
 /// <param name="output_location_count">Output: the number of people at this location for this hour</param>
 /// <param name="output_contacts_desired">Output: the number of contacts we will make this hour</param>
-__device__ void device_lookupErrandLocationData(errandSchedule_t myLoc, locOffset_t * loc_offset_arr, locOffset_t * output_loc_offset, int * output_loc_count)
+__device__ void device_lookupErrandLocationData(locId_t myLoc, locOffset_t * loc_offset_arr, locOffset_t * output_loc_offset, int * output_loc_count)
 {
 	//location offsets are stored in collated format, eg for locations 1 2 3
 	// 1 2 3 1 2 3
@@ -2120,7 +2120,7 @@ const char * lookup_age_type(age_t age_type)
 	}
 }
 
-__global__ void kernel_assignWeekendErrands(personId_t * people_indexes_arr, errandSchedule_t * errand_scheduling_array, int num_people, int num_locations, randOffset_t rand_offset)
+__global__ void kernel_assignWeekendErrands(personId_t * people_indexes_arr, locId_t * errand_scheduling_array, int num_people, int num_locations, randOffset_t rand_offset)
 {
 	const int RAND_COUNTS_CONSUMED = 2;	//one for hours, one for destinations
 
@@ -2133,7 +2133,7 @@ __global__ void kernel_assignWeekendErrands(personId_t * people_indexes_arr, err
 		device_generateWeekendErrands(errand_scheduling_array + offset, myRandOffset);
 	}
 }
-__global__ void kernel_doInfectedSetup_weekend(personId_t * infected_indexes_array, errandSchedule_t * errand_scheduling_array,  errandSchedule_t * infected_errands_array, int num_infected)
+__global__ void kernel_doInfectedSetup_weekend(personId_t * infected_indexes_array, locId_t * errand_scheduling_array,  locId_t * infected_errands_array, int num_infected)
 {
 	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos <num_infected; myPos += gridDim.x * blockDim.x)
 	{
@@ -2148,7 +2148,7 @@ __global__ void kernel_doInfectedSetup_weekend(personId_t * infected_indexes_arr
 	}
 }
 
-__device__ void device_copyInfectedErrandLocs_weekend(errandSchedule_t * errand_array_ptr, errandSchedule_t * infected_errand_ptr)
+__device__ void device_copyInfectedErrandLocs_weekend(locId_t * errand_array_ptr, locId_t * infected_errand_ptr)
 {
 	infected_errand_ptr[0] = errand_array_ptr[0];
 	infected_errand_ptr[1] = errand_array_ptr[1];
@@ -2981,7 +2981,7 @@ void PandemicSim::setup_setCudaTopology()
 	cuda_doInfectionAtionsKernel_threads = cuda_threads;
 }
 
-__device__ errandSchedule_t device_fishAfterschoolOrErrandDestination_weekday(
+__device__ locId_t device_fishAfterschoolOrErrandDestination_weekday(
 	unsigned int rand_val, age_t myAge)
 {
 	int business_type = BUSINESS_TYPE_AFTERSCHOOL;
@@ -3023,7 +3023,7 @@ __device__ errandSchedule_t device_fishAfterschoolOrErrandDestination_weekday(
 __device__ void device_assignAfterschoolOrErrandDests_weekday(
 	unsigned int rand_val1, unsigned int rand_val2,
 	age_t myAge, int num_locations,
-	errandSchedule_t * output_dest1, errandSchedule_t * output_dest2)
+	locId_t * output_dest1, locId_t * output_dest2)
 {
 	//to avoid divergence, the base case will assign the same errand to both hours
 	//(i.e. the norm for children)
@@ -3041,7 +3041,7 @@ __device__ void device_assignAfterschoolOrErrandDests_weekday(
 
 __global__ void kernel_assignWeekdayAfterschoolAndErrands(
 	age_t * people_ages_arr, int number_people, int num_locations,
-	errandSchedule_t * errand_schedule_array,
+	locId_t * errand_schedule_array,
 	randOffset_t rand_offset)
 {
 	threefry2x64_key_t tf_k = {{SEED_DEVICE[0], SEED_DEVICE[1]}};
@@ -3050,7 +3050,7 @@ __global__ void kernel_assignWeekdayAfterschoolAndErrands(
 		unsigned int i[4];
 	} u;
 
-	errandSchedule_t * errand_schedule_array_hour2 = errand_schedule_array + number_people;
+	locId_t * errand_schedule_array_hour2 = errand_schedule_array + number_people;
 
 	//for each adult
 	for(int myGridPos = blockIdx.x * blockDim.x + threadIdx.x;  myGridPos <= number_people / 2; myGridPos += gridDim.x * blockDim.x)
@@ -3284,7 +3284,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 #if SIM_VALIDATION == 1
 										   personId_t * output_infector_arr, personId_t * output_victim_arr,
 										   kval_type_t * output_kval_arr,  action_t * output_action_arr, 
-										   errandSchedule_t * output_contact_loc_arr,
+										   locId_t * output_contact_loc_arr,
 										   float * float_rand1, float * float_rand2,
 										   float * float_rand3, float * float_rand4,
 #endif
@@ -3378,7 +3378,7 @@ __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected
 #if SIM_VALIDATION == 1
 										 personId_t * output_infector_arr, personId_t * output_victim_arr, 
 										 kval_type_t * output_kval_arr, action_t * output_action_arr,
-										 errandSchedule_t * output_contact_location_arr,
+										 locId_t * output_contact_location_arr,
 										 float * float_rand1, float * float_rand2,
 										 float * float_rand3, float * float_rand4,
 #endif
@@ -3549,7 +3549,7 @@ struct initalInfection_seasonal_functor : public thrust::unary_function<personSt
 	}
 };
 
-__device__ maxContacts_t device_getWorkplaceMaxContacts(errandSchedule_t errand, int number_locations)
+__device__ maxContacts_t device_getWorkplaceMaxContacts(locId_t errand, int number_locations)
 {
 	//strip the "hour" encoding away to get the location ID
 	locId_t loc_id = errand % number_locations;
@@ -3722,7 +3722,7 @@ void PandemicSim::setup_initializeStatusArrays()
 
 __device__ errandContactsProfile_t device_recalc_weekdayErrandDests_assignProfile(
 	personId_t myIdx, age_t myAge, 
-	errandSchedule_t * output_dest1, errandSchedule_t * output_dest2)
+	locId_t * output_dest1, locId_t * output_dest2)
 {
 	//find the counter settings when this errand was generated
 	int myGridPos = myIdx / 2;
@@ -3760,7 +3760,7 @@ __device__ errandContactsProfile_t device_recalc_weekdayErrandDests_assignProfil
 	return profile;
 }
 
-__global__ void kernel_testWeekdayRecalc(personId_t * infected_indexes, int num_infected, age_t * people_ages, errandSchedule_t * output_infected_errands)
+__global__ void kernel_testWeekdayRecalc(personId_t * infected_indexes, int num_infected, age_t * people_ages, locId_t * output_infected_errands)
 {
 	for(int myPos = blockIdx.x * blockDim.x + threadIdx.x;  myPos < num_infected; myPos += gridDim.x * blockDim.x)
 	{
@@ -3781,8 +3781,8 @@ void PandemicSim::debug_testErrandRegen_weekday()
 	int blocks = cuda_doWeekdayErrandAssignment_blocks;
 	int threads = cuda_doWeekdayErrandAssignment_threads;
 
-	thrust::device_vector<errandSchedule_t> d_regen_dests(2 * infected_count);
-	errandSchedule_t * d_regen_dests_ptr = thrust::raw_pointer_cast(d_regen_dests.data());
+	thrust::device_vector<locId_t> d_regen_dests(2 * infected_count);
+	locId_t * d_regen_dests_ptr = thrust::raw_pointer_cast(d_regen_dests.data());
 
 	kernel_testWeekdayRecalc<<<blocks,threads>>>(infected_indexes_ptr,infected_count,people_ages_ptr,d_regen_dests_ptr);
 	cudaDeviceSynchronize();
@@ -3791,9 +3791,9 @@ void PandemicSim::debug_testErrandRegen_weekday()
 	debug_assert(ranges_equal, "weekday regenerated errands do not match expectation");
 }
 
-//__device__ void device_generateWeekendErrands(errandSchedule_t * errand_array_ptr, int num_locations,randOffset_t myRandOffset)
+//__device__ void device_generateWeekendErrands(locId_t * errand_array_ptr, int num_locations,randOffset_t myRandOffset)
 
-__device__ void device_recalc_weekendErrandDests(personId_t myIdx, errandSchedule_t * errand_array_ptr)
+__device__ void device_recalc_weekendErrandDests(personId_t myIdx, locId_t * errand_array_ptr)
 {
 	randOffset_t myRandOffset = device_randOffsetsStruct->errand_randOffset + (2*myIdx);
 	device_generateWeekendErrands(errand_array_ptr,myRandOffset);
@@ -3956,7 +3956,7 @@ void PandemicSim::debug_testConstsMem()
 
 struct regenWeekendErrand_test_functor : public thrust::unary_function<int,void>
 {
-	errandSchedule_t * output_errand_arr;
+	locId_t * output_errand_arr;
 	personId_t * infected_idx_arr;
 
 	__device__ void operator () (int myPos) const
@@ -3971,7 +3971,7 @@ struct regenWeekendErrand_test_functor : public thrust::unary_function<int,void>
 
 void PandemicSim::debug_testErrandRegen_weekend()
 {
-	thrust::device_vector<errandSchedule_t> inf_locs_copy(NUM_WEEKEND_ERRANDS * infected_count);
+	thrust::device_vector<locId_t> inf_locs_copy(NUM_WEEKEND_ERRANDS * infected_count);
 	thrust::counting_iterator<int> count_it(0);
 
 	regenWeekendErrand_test_functor weekendErrandFunctor;

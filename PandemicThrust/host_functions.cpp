@@ -105,7 +105,7 @@ locId_t host_setup_fishWorkplace(unsigned int rand_val)
 
 errandContactsProfile_t host_recalc_weekdayErrandDests_assignProfile(
 	personId_t myIdx, age_t myAge, 
-	errandSchedule_t * output_dest1, errandSchedule_t * output_dest2)
+	locId_t * output_dest1, locId_t * output_dest2)
 {
 	//find the counter settings when this errand was generated
 	int myGridPos = myIdx / 2;
@@ -147,7 +147,7 @@ errandContactsProfile_t host_recalc_weekdayErrandDests_assignProfile(
 void host_assignAfterschoolOrErrandDests_weekday(
 	unsigned int rand_val1, unsigned int rand_val2,
 	age_t myAge, int num_locations,
-	errandSchedule_t * output_dest1, errandSchedule_t * output_dest2)
+	locId_t * output_dest1, locId_t * output_dest2)
 {
 	//to avoid divergence, the base case will assign the same errand to both hours
 	//(i.e. the norm for children)
@@ -164,7 +164,7 @@ void host_assignAfterschoolOrErrandDests_weekday(
 }
 
 
-errandSchedule_t host_fishAfterschoolOrErrandDestination_weekday(
+locId_t host_fishAfterschoolOrErrandDestination_weekday(
 	unsigned int rand_val, age_t myAge)
 {
 	int business_type = BUSINESS_TYPE_AFTERSCHOOL;
@@ -204,13 +204,13 @@ errandSchedule_t host_fishAfterschoolOrErrandDestination_weekday(
 }
 
 
-void host_recalc_weekendErrandDests(personId_t myIdx, errandSchedule_t * errand_array_ptr)
+void host_recalc_weekendErrandDests(personId_t myIdx, locId_t * errand_array_ptr)
 {
 	randOffset_t myRandOffset = host_randOffsetsStruct->errand_randOffset + (2*myIdx);
 	host_generateWeekendErrands(errand_array_ptr,myRandOffset);
 }
 
-void host_generateWeekendErrands(errandSchedule_t * errand_output_ptr, randOffset_t myRandOffset)
+void host_generateWeekendErrands(locId_t * errand_output_ptr, randOffset_t myRandOffset)
 {
 	int num_locations = host_simSizeStruct->number_workplaces;
 
@@ -245,7 +245,7 @@ void host_generateWeekendErrands(errandSchedule_t * errand_output_ptr, randOffse
 	errand_output_ptr[2] = host_fishWeekendErrandDestination(u.i[5]) + (hour3 * num_locations);
 }
 
-errandSchedule_t host_fishWeekendErrandDestination(unsigned int rand_val)
+locId_t host_fishWeekendErrandDestination(unsigned int rand_val)
 {
 	float y = (float) rand_val / UNSIGNED_MAX;
 

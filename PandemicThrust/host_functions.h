@@ -12,17 +12,17 @@ void host_setup_fishSchoolAndAge(unsigned int rand_val, age_t * output_age_ptr, 
 
 errandContactsProfile_t host_recalc_weekdayErrandDests_assignProfile(
 	personId_t myIdx, age_t myAge, 
-	errandSchedule_t * output_dest1, errandSchedule_t * output_dest2);
+	locId_t * output_dest1, locId_t * output_dest2);
 void host_assignAfterschoolOrErrandDests_weekday(
 	unsigned int rand_val1, unsigned int rand_val2,
 	age_t myAge, int num_locations,
-	errandSchedule_t * output_dest1, errandSchedule_t * output_dest2);
-errandSchedule_t host_fishAfterschoolOrErrandDestination_weekday(
+	locId_t * output_dest1, locId_t * output_dest2);
+locId_t host_fishAfterschoolOrErrandDestination_weekday(
 	unsigned int rand_val, age_t myAge);
 
-void host_recalc_weekendErrandDests(personId_t myIdx, errandSchedule_t * errand_array_ptr);
-void host_generateWeekendErrands(errandSchedule_t * errand_output_ptr, randOffset_t myRandOffset);
-errandSchedule_t host_fishWeekendErrandDestination(unsigned int rand_val);
+void host_recalc_weekendErrandDests(personId_t myIdx, locId_t * errand_array_ptr);
+void host_generateWeekendErrands(locId_t * errand_output_ptr, randOffset_t myRandOffset);
+locId_t host_fishWeekendErrandDestination(unsigned int rand_val);
 
 
 extern float WORKPLACE_TYPE_ASSIGNMENT_PDF_HOST[NUM_BUSINESS_TYPES];

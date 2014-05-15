@@ -13,9 +13,7 @@ typedef unsigned char gen_t;
 typedef unsigned char errandContactsProfile_t;
 typedef unsigned char kval_type_t;
 
-
-typedef int errandSchedule_t;
-typedef errandSchedule_t locId_t;
+typedef int locId_t;
 typedef int locOffset_t;
 typedef int maxContacts_t;  
 
@@ -37,7 +35,7 @@ typedef unsigned int status_t;
 #define NULL_PERSON_INDEX (personId_t) -1
 #define NULL_AGE (age_t) -1
 #define NULL_LOC_ID (locId_t) -1
-#define NULL_ERRAND (errandSchedule_t) -1
+#define NULL_ERRAND (locId_t) -1
 
 #define INITIAL_DAY 0
 #define INITIAL_GEN 0
@@ -110,7 +108,7 @@ struct simArrayPtrStruct_t{
 	age_t * people_ages;
 	locId_t * people_workplaces;
 	locId_t * people_households;
-	errandSchedule_t * people_errands;
+	locId_t * people_errands;
 
 
 	locOffset_t * household_locOffsets;
@@ -135,7 +133,7 @@ struct simDebugArrayPtrStruct_t{
 	personId_t * contact_infectors, * contact_victims;
 	kval_type_t * contact_kval_types;
 	action_t * contact_actions;
-	errandSchedule_t * contact_locations;
+	locId_t * contact_locations;
 
 	float *float1,*float2,*float3,*float4;
 

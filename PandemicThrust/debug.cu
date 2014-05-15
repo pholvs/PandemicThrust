@@ -25,14 +25,14 @@ int h_people_status_data_freshness = -2;
 thrust::host_vector<personId_t> h_contacts_infector;
 thrust::host_vector<personId_t> h_contacts_victim;
 thrust::host_vector<personId_t> h_contacts_kval;
-thrust::host_vector<errandSchedule_t> h_contacts_location;
+thrust::host_vector<locId_t> h_contacts_location;
 int h_contacts_freshness = -2;
 
 thrust::host_vector<action_t> h_action_types;
 thrust::host_vector<float> h_actions_rand1, h_actions_rand2, h_actions_rand3, h_actions_rand4;
 int h_actions_freshness = -2;
 
-thrust::host_vector<errandSchedule_t> h_people_errands;
+thrust::host_vector<locId_t> h_people_errands;
 int errand_lookup_freshness = -2;
 
 thrust::host_vector<personId_t> h_errand_people_table;
@@ -177,7 +177,7 @@ void PandemicSim::validateContacts_wholeDay()
 			int contact_infector = h_contacts_infector[contact_offset + contact];
 			int contact_victim = h_contacts_victim[contact_offset + contact];
 
-			errandSchedule_t contact_location = h_contacts_location[contact_offset + contact];
+			locId_t contact_location = h_contacts_location[contact_offset + contact];
 
 			int locs_matched = 0;
 
@@ -297,13 +297,13 @@ void PandemicSim::validateContacts_wholeDay()
 						{
 							//fish out the infector's errand
 							int inf_errand_lookup_offset = (infected_index * NUM_WEEKEND_ERRANDS) + infector_errand;
-							errandSchedule_t errand = h_people_errands[inf_errand_lookup_offset];
+							locId_t errand = h_people_errands[inf_errand_lookup_offset];
 
-							inf_hour_arr[infector_errand] = get_hour_from_errandSchedule_t(errand);
-							inf_loc_arr[infector_errand] = get_location_from_errandSchedule_t(errand);
+							inf_hour_arr[infector_errand] = get_hour_from_locId_t(errand);
+							inf_loc_arr[infector_errand] = get_location_from_locId_t(errand);
 
 							if(errand == contact_location)
-								infector_loc = get_location_from_errandSchedule_t(errand);
+								infector_loc = get_location_from_locId_t(errand);
 						}
 
 						//iterate victim errands
@@ -311,13 +311,13 @@ void PandemicSim::validateContacts_wholeDay()
 						{
 							//fish out victim's errand
 							int victim_errand_lookup_offset = (contact_victim * NUM_WEEKEND_ERRANDS) + victim_errand;
-							errandSchedule_t errand = h_people_errands[victim_errand_lookup_offset];
+							locId_t errand = h_people_errands[victim_errand_lookup_offset];
 
-							vic_hour_arr[victim_errand] = get_hour_from_errandSchedule_t(errand);
-							vic_loc_arr[victim_errand] = get_location_from_errandSchedule_t(errand);
+							vic_hour_arr[victim_errand] = get_hour_from_locId_t(errand);
+							vic_loc_arr[victim_errand] = get_location_from_locId_t(errand);
 
 							if(errand == contact_location)
-								victim_loc = get_location_from_errandSchedule_t(errand);
+								victim_loc = get_location_from_locId_t(errand);
 						}
 
 						if(infector_loc >= 0 && victim_loc >= 0 && infector_loc == victim_loc)
@@ -378,9 +378,9 @@ void PandemicSim::validateContacts_wholeDay()
 				}
 				else if(contact_type == CONTACT_TYPE_AFTERSCHOOL)
 				{
-					errandSchedule_t inf_schedule[NUM_WEEKDAY_ERRANDS];
+					locId_t inf_schedule[NUM_WEEKDAY_ERRANDS];
 					host_recalc_weekdayErrandDests_assignProfile(contact_infector,infector_age, inf_schedule,inf_schedule+1);
-					errandSchedule_t vic_schedule[NUM_WEEKEND_ERRANDS];
+					locId_t vic_schedule[NUM_WEEKEND_ERRANDS];
 					host_recalc_weekdayErrandDests_assignProfile(contact_victim,victim_age,vic_schedule,vic_schedule+1);
 
 					//fish out afterschool location from the first hour slot of "errands"
@@ -448,18 +448,18 @@ void PandemicSim::debug_generateErrandLookup()
 
 	int num_errands = number_people * errands_per_person_today();
 
-	errandSchedule_t * arr_base = &h_people_errands[0];
+	locId_t * arr_base = &h_people_errands[0];
 	for(personId_t idx = 0; idx < number_people; idx++)
 	{
 		if(is_weekend())
 		{
-			errandSchedule_t * errand_ptr = arr_base + (idx * NUM_WEEKEND_ERRANDS);
+			locId_t * errand_ptr = arr_base + (idx * NUM_WEEKEND_ERRANDS);
 			host_recalc_weekendErrandDests(idx,errand_ptr);
 		}
 		else
 		{
 			age_t myAge = h_people_age[idx];
-			errandSchedule_t * errand_ptr = arr_base + idx;
+			locId_t * errand_ptr = arr_base + idx;
 			host_recalc_weekdayErrandDests_assignProfile(idx,myAge,errand_ptr,errand_ptr+number_people);
 		}
 	}
@@ -531,7 +531,7 @@ void PandemicSim::debug_validateErrandSchedule()
 
 		for(int errand = 0; errand < errands_per_person; errand++)
 		{
-			errandSchedule_t scheduled_errand;
+			locId_t scheduled_errand;
 
 			if(weekend)
 			{
@@ -542,8 +542,8 @@ void PandemicSim::debug_validateErrandSchedule()
 				scheduled_errand = h_people_errands[(errand * number_people) + myIdx];
 			}
 
-			int errand_loc = get_location_from_errandSchedule_t(scheduled_errand);
-			int errand_hour = get_hour_from_errandSchedule_t(scheduled_errand);
+			int errand_loc = get_location_from_locId_t(scheduled_errand);
+			int errand_hour = get_hour_from_locId_t(scheduled_errand);
 
 			//validate hour
 			if(weekend)
@@ -595,7 +595,7 @@ void PandemicSim::debug_validateLocationArrays()
 	int num_errand_hours = is_weekend() ? NUM_WEEKEND_ERRAND_HOURS : NUM_WEEKDAY_ERRAND_HOURS;
 	int num_errands_total = num_all_errands_today();
 
-	thrust::host_vector<errandSchedule_t> h_sorted_errands(num_errands_total);
+	thrust::host_vector<locId_t> h_sorted_errands(num_errands_total);
 	thrust::copy_n(people_errands.begin(), num_errands_total, h_sorted_errands.begin());
 
 	thrust::copy_n(errand_locationOffsets.begin(), number_workplaces * errand_hours_today(), h_errand_locationOffsets_multiHour.begin());
@@ -607,10 +607,10 @@ void PandemicSim::debug_validateLocationArrays()
 		if(hour > 0)
 		{
 			int offset_to_last_loc_of_previous_hour = h_errand_locationOffsets_multiHour[first_loc_offset_index - 1];
-			errandSchedule_t errand_at_offset = h_sorted_errands[offset_to_last_loc_of_previous_hour];
+			locId_t errand_at_offset = h_sorted_errands[offset_to_last_loc_of_previous_hour];
 
-			int hour_of_errand = get_hour_from_errandSchedule_t(errand_at_offset);
-			int locId_of_errand = get_location_from_errandSchedule_t(errand_at_offset);
+			int hour_of_errand = get_hour_from_locId_t(errand_at_offset);
+			int locId_of_errand = get_location_from_locId_t(errand_at_offset);
 
 			debug_assert("location_offset_array: last hour of previous errand does not have expected value",hour - 1,hour_of_errand);
 		}
@@ -618,10 +618,10 @@ void PandemicSim::debug_validateLocationArrays()
 		//check that first location has the proper value
 		{
 			int offset_to_first_loc = h_errand_locationOffsets_multiHour[first_loc_offset_index];
-			errandSchedule_t errand_at_offset = h_sorted_errands[offset_to_first_loc];
+			locId_t errand_at_offset = h_sorted_errands[offset_to_first_loc];
 
-			int hour_of_errand = get_hour_from_errandSchedule_t(errand_at_offset);
-			int locId_of_errand = get_location_from_errandSchedule_t(errand_at_offset);
+			int hour_of_errand = get_hour_from_locId_t(errand_at_offset);
+			int locId_of_errand = get_location_from_locId_t(errand_at_offset);
 
 			debug_assert("location_offset_array: first errand of hour does not have expected value",hour,hour_of_errand);
 		}
@@ -641,16 +641,16 @@ void PandemicSim::debug_validateLocationArrays()
 
 			if(loc_count > 0)
 			{
-				errandSchedule_t first_errand_at_offset = h_sorted_errands[loc_offset];
-				int hour_of_first_errand = get_hour_from_errandSchedule_t(first_errand_at_offset);
-				int locId_of_first_errand = get_location_from_errandSchedule_t(first_errand_at_offset);
+				locId_t first_errand_at_offset = h_sorted_errands[loc_offset];
+				int hour_of_first_errand = get_hour_from_locId_t(first_errand_at_offset);
+				int locId_of_first_errand = get_location_from_locId_t(first_errand_at_offset);
 
 				debug_assert("location_offset_array: hour at offset[0] does not match",hour,hour_of_first_errand);
 				debug_assert("location_offset_array: locId at offset[0] does not match",loc,locId_of_first_errand);
 
-				errandSchedule_t last_errand_at_offset = h_sorted_errands[loc_offset + loc_count - 1];
-				int hour_of_last_errand = get_hour_from_errandSchedule_t(last_errand_at_offset);
-				int locId_of_last_errand = get_location_from_errandSchedule_t(last_errand_at_offset);
+				locId_t last_errand_at_offset = h_sorted_errands[loc_offset + loc_count - 1];
+				int hour_of_last_errand = get_hour_from_locId_t(last_errand_at_offset);
+				int locId_of_last_errand = get_location_from_locId_t(last_errand_at_offset);
 
 				debug_assert("location_offset_array: hour at offset[last] does not match",hour,hour_of_last_errand);
 				debug_assert("location_offset_array: locId at offset[last] does not match",loc,locId_of_last_errand);
