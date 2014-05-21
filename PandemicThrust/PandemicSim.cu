@@ -3213,7 +3213,6 @@ __device__ void device_doContactsToActions_immediately(
 		}
 	}
 
-
 	threefry2x64_ctr_t tf_ctr_1 = {{myRandOffset, myRandOffset}};
 	rand_union.c[0] = threefry2x64(tf_ctr_1, tf_k);
 	//myRandOffset += gridDim.x * blockDim.x;
@@ -3237,17 +3236,23 @@ __device__ void device_doContactsToActions_immediately(
 
 		kval_t contact_kval = KVAL_LOOKUP_DEVICE[contact_type];
 
-		float y_p = (float) rand_union.i[rand_vals_used++] / UNSIGNED_MAX;
+		float y_p = (float) rand_union.i[rand_vals_used] / UNSIGNED_MAX;
 		bool infects_p = y_p < (float) (inf_prob_p * contact_kval);
+		unsigned int profile_p_rand_val = rand_union.i[rand_vals_used] ^ rand_union.i[(rand_vals_used + 1) % 16];
+		status_t profile_p_to_set = device_getInfectionProfile(profile_p_rand_val);
+		rand_vals_used++;
 
-		float y_s = (float) rand_union.i[rand_vals_used++] / UNSIGNED_MAX;
+		float y_s = (float) rand_union.i[rand_vals_used] / UNSIGNED_MAX;
 		bool infects_s = y_s < (float) (inf_prob_s * contact_kval);
+		unsigned int profile_s_rand_val = rand_union.i[rand_vals_used] ^ rand_union.i[(rand_vals_used + 1) % 16];
+		status_t profile_s_to_set = device_getInfectionProfile(profile_s_rand_val);
+		rand_vals_used++;
 
 		//function handles parsing bools into an action and checking that victim is susceptible
 		action_t result = device_doInfectionActionImmediately(
 			contact_victim, current_day + 1,
 			infects_p,infects_s,
-			STATUS_INFECTED, STATUS_INFECTED,
+			profile_p_to_set,profile_s_to_set,
 			gen_p_to_set, gen_s_to_set,
 			people_status_p_arr,people_status_s_arr,
 			people_days_pandemic,people_days_seasonal,
@@ -4057,4 +4062,20 @@ void PandemicSim::final_releaseMemory()
 
 	if(SIM_PROFILING)
 		profiler.endFunction(DAY_NOT_INFECTED,1);
+}
+
+__device__ status_t device_getInfectionProfile(unsigned int rand_val)
+{
+	//get a profile between 0 and 3
+	status_t profile = rand_val % 3;
+
+	//add the offset to the first profile
+	profile += STATUS_INFECTED;
+
+	//if the y exceeds the percent of symptomatic people, this profile is asymptomatic
+	float y = (float) rand_val / UNSIGNED_MAX;
+	if(y > PERCENT_SYMPTOMATIC_DEVICE[0])
+		profile += 3;		//add 3
+
+	return profile;
 }

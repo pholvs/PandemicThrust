@@ -11,12 +11,14 @@
 //#include "device_GT640.h"
 //#include "device_Q880M.h"
 
+#define CUDA_PROFILER_ENABLE 1
+
 #ifndef __max
 #define __max(a,b) (((a) > (b)) ? (a) : (b))
 #endif
 
 #define NAME_OF_SIM_TYPE "gpu_cub"
-#define MAIN_DELAY_SECONDS 2
+#define MAIN_DELAY_SECONDS 0
 
 #define CONSOLE_OUTPUT 0
 #define TIMING_BATCH_MODE 0
@@ -444,6 +446,7 @@ __device__ void device_doContactsToActions_immediately(
 	float * rand_arr_1, float * rand_arr_2, float * rand_arr_3, float * rand_arr_4,
 #endif
 	day_t current_day,randOffset_t myRandOffset);
+__device__ status_t device_getInfectionProfile(unsigned int rand_val);
 
 __device__ maxContacts_t device_getWorkplaceMaxContacts(locId_t errand);
 
