@@ -195,8 +195,8 @@ void PandemicSim::setupSim()
 		debug_validatePeopleSetup();
 	}
 
-	if(POLL_MEMORY_USAGE)
-		logging_pollMemoryUsage_takeSample(current_day);
+	//must be done every simulation, even if we're not doing a daily log
+	logging_pollMemoryUsage_takeSample(current_day);
 
 	if(SIM_PROFILING)
 	{

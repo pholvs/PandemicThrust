@@ -20,6 +20,8 @@ float p_scale=0.f, l_scale=0.f;
 const char * sim_type, * sim_device;
 int core_seed;
 
+bool daily_log;
+
 bool file_exists(const char * filename)
 {
 	std::ifstream ifile(filename);
@@ -34,7 +36,10 @@ void logging_pollMemUsage_doSetup(bool log_memory_usage, bool outputFilesInParen
 
 	cudaMemGetInfo(&initial_free_bytes, &initial_total_bytes);
 
-	if(log_memory_usage){
+	daily_log = log_memory_usage;
+
+	if(daily_log)
+	{
 		//do initial setup for memory log
 		if(outputFilesInParentDir)
 			fMemory = fopen("../output_mem.csv","w");
@@ -64,12 +69,15 @@ void logging_pollMemoryUsage_takeSample(int day)
 	if(bytes_used > max_memory_used)
 		max_memory_used = bytes_used;
 	
-	if(VISUAL_STUDIO)
-		fprintf(fMemory,"%d,%Iu,%Iu,%Iu,%Iu\n",
+	if(daily_log)
+	{
+		if(VISUAL_STUDIO)
+			fprintf(fMemory,"%d,%Iu,%Iu,%Iu,%Iu\n",
 			day, current_free_bytes, bytes_used, current_total_bytes, megabytes_used);
-	else
-		fprintf(fMemory, "%d,%zu,%zu,%zu,%zu\n",
+		else
+			fprintf(fMemory, "%d,%zu,%zu,%zu,%zu\n",
 			day, current_free_bytes, bytes_used, current_total_bytes, megabytes_used);
+	}
 }
 
 void logging_pollMemoryUsage_done()
@@ -81,13 +89,6 @@ void logging_pollMemoryUsage_done()
 	float elapsed_milliseconds;
 	cudaEventElapsedTime(&elapsed_milliseconds, event_start, event_stop);
 	float elapsed_seconds = (float) elapsed_milliseconds / 1000;
-
-	size_t current_free_bytes, current_total_bytes;
-	cudaMemGetInfo(&current_free_bytes, &current_total_bytes);
-
-	size_t bytes_used = initial_free_bytes - current_free_bytes;
-	if(bytes_used > max_memory_used)
-		max_memory_used = bytes_used;
 
 	size_t max_megabytes_used = max_memory_used >> 20;
 
