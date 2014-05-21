@@ -13,8 +13,8 @@
 #include <thrust/execution_policy.h>
 
 
-int cuda_blocks = 32;
-int cuda_threads = 256;
+int cuda_blocks = DEVICE_GRID_BLOCKS;
+int cuda_threads = DEVICE_GRID_THREADS;
 
 
 FILE * f_outputInfectedStats;
@@ -121,7 +121,7 @@ PandemicSim::PandemicSim()
 	setup_scaleSimulation();
 	setup_calculateInfectionData();
 
-	logging_setSimScale(people_scaling_factor,location_scaling_factor);
+	logging_setSimData(people_scaling_factor,location_scaling_factor,NAME_OF_SIM_TYPE, NAME_OF_SIM_DEVICE,core_seed);
 
 	//copy everything down to the GPU
 	setup_pushDeviceData();
@@ -964,6 +964,7 @@ void PandemicSim::runToCompletion()
 	}
 
 	cudaDeviceSynchronize();
+	final_releaseMemory();
 	final_countReproduction();
 
 	if(SIM_PROFILING)
@@ -2908,8 +2909,6 @@ void PandemicSim::setup_calculateInfectionData()
 
 void PandemicSim::setup_loadSeed()
 {
-	int core_seed;
-
 	FILE * fSeed = fopen("seed.txt","r");
 	if(fSeed == NULL)
 	{
@@ -4041,4 +4040,21 @@ void PandemicSim::setup_configCubBuffers()
 	people_errands_doubleBuffer.d_buffers[0] = thrust::raw_pointer_cast(people_errands_a.data());
 	people_errands_doubleBuffer.d_buffers[1] = thrust::raw_pointer_cast(people_errands_b.data());
 	errand_people_doubleBuffer.selector = 0;
+}
+
+
+//free some memory up for final processing to guarantee we won't overflow here
+void PandemicSim::final_releaseMemory()
+{
+	if(SIM_PROFILING)
+		profiler.beginFunction(DAY_NOT_INFECTED,"final_releaseMemory");
+
+	errand_people_table_a.clear();
+	errand_people_table_a.shrink_to_fit();
+
+	if(POLL_MEMORY_USAGE)
+		logging_pollMemoryUsage_takeSample(DAY_NOT_INFECTED);
+
+	if(SIM_PROFILING)
+		profiler.endFunction(DAY_NOT_INFECTED,1);
 }

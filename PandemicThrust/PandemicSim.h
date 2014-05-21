@@ -6,13 +6,17 @@
 #include "indirect.h"
 #include "resource_logging.h"
 
+//include only one
+#include "device_K20.h"
+//#include "device_GT640.h"
+//#include "device_Q880M.h"
 
 #ifndef __max
 #define __max(a,b) (((a) > (b)) ? (a) : (b))
 #endif
 
-#define COUNTING_GRID_BLOCKS 32
-#define COUNTING_GRID_THREADS 256
+#define NAME_OF_SIM_TYPE "gpu_cub"
+#define MAIN_DELAY_SECONDS 2
 
 #define CONSOLE_OUTPUT 0
 #define TIMING_BATCH_MODE 0
@@ -61,6 +65,8 @@ public:
 	int MAX_DAYS;
 	day_t current_day;
 
+	int core_seed;
+
 	void setupSim();
 	void setup_loadParameters();
 	void setup_loadSeed();
@@ -92,6 +98,7 @@ public:
 	void daily_countAndRecover();
 	void daily_writeInfectedStats();
 	void daily_buildInfectedArray_global();
+	void final_releaseMemory();
 	void final_countReproduction();
 
 	void logging_openOutputStreams();

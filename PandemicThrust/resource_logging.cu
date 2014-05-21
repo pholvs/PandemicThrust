@@ -1,5 +1,7 @@
 #include "resource_logging.h"
 
+#define RESOURCE_LOG_FILENAME "output_resource_log.csv"
+
 #ifdef _MSC_VER
 #define VISUAL_STUDIO 1
 #else
@@ -15,6 +17,14 @@ size_t max_memory_used = 0;
 cudaEvent_t event_start, event_stop;
 
 float p_scale=0.f, l_scale=0.f;
+const char * sim_type, * sim_device;
+int core_seed;
+
+bool file_exists(const char * filename)
+{
+	std::ifstream ifile(filename);
+	return ifile;
+}
 
 void logging_pollMemUsage_doSetup(bool log_memory_usage, bool outputFilesInParentDir)
 {
@@ -81,16 +91,25 @@ void logging_pollMemoryUsage_done()
 
 	size_t max_megabytes_used = max_memory_used >> 20;
 
-
-	FILE * fResourceLog = fopen("output_resource_log.csv", "w");
-	fprintf(fResourceLog, "people_sim_scale,location_sim_scale,runtime_milliseconds,runtime_seconds,bytes_used,megabytes_used\n");
+	FILE * fResourceLog;
+	bool log_exists = file_exists(RESOURCE_LOG_FILENAME);
+	
+	if(log_exists)
+	{
+		fResourceLog = fopen(RESOURCE_LOG_FILENAME, "a");
+	}
+	else
+	{
+		fResourceLog= fopen(RESOURCE_LOG_FILENAME, "w");
+		fprintf(fResourceLog, "sim_type,sim_device,people_sim_scale,location_sim_scale,seed,runtime_milliseconds,runtime_seconds,bytes_used,megabytes_used\n");
+	}
 
 	if(VISUAL_STUDIO)
-		fprintf(fResourceLog,"%f,%f,%f,%f,%Iu,%Iu\n",
-			p_scale,l_scale,elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
+		fprintf(fResourceLog,"%s,%s,%f,%f,%d,%f,%f,%Iu,%Iu\n",
+			sim_type,sim_device,p_scale,l_scale,core_seed,elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
 	else
-		fprintf(fResourceLog, "%f,%f,%f,%f,%zu,%zu\n",
-			p_scale,l_scale,elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
+		fprintf(fResourceLog, "%s,%s,%f,%f,%d,%f,%f,%zu,%zu\n",
+			sim_type,sim_device,p_scale,l_scale,core_seed,elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
 	fclose(fResourceLog);
 
 
@@ -101,9 +120,11 @@ void logging_pollMemoryUsage_done()
 	cudaEventDestroy(event_stop);
 }
 
-void logging_setSimScale(float people_scale, float loc_scale)
+void logging_setSimData(float people_scale, float loc_scale, const char * sim_type_string, const char * device, int seed)
 {
 	p_scale = people_scale;
 	l_scale = loc_scale;
-
+	sim_type = sim_type_string;
+	sim_device = device;
+	core_seed = seed;
 }

@@ -196,6 +196,9 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cuda_includes.h" />
+    <ClInclude Include="device_GT640.h" />
+    <ClInclude Include="device_K20.h" />
+    <ClInclude Include="device_Q880M.h" />
     <ClInclude Include="host_functions.h" />
     <ClInclude Include="indirect.h" />
     <ClInclude Include="PandemicSim.h" />
