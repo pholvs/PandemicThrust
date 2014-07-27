@@ -1258,11 +1258,11 @@ void PandemicSim::doWeekday_wholeDay()
 	int threads = cuda_makeWeekdayContactsKernel_threads;
 
 	//get the amount of shared memory needed for each block
-	size_t smem_size = sizeof(personId_t) + sizeof(kval_type_t);
-	smem_size *= MAX_CONTACTS_WEEKDAY;
-	smem_size *= threads;
+	//size_t smem_size = sizeof(personId_t) + sizeof(kval_type_t);
+	//smem_size *= MAX_CONTACTS_WEEKDAY;
+	//smem_size *= threads;
 
-	//size_t smem_size = 0;
+	size_t smem_size = 0;
 
 	kernel_weekday_sharedMem<<<blocks,threads,smem_size>>> (infected_count,
 		infected_indexes_ptr,people_ages_ptr,
@@ -1374,9 +1374,11 @@ void PandemicSim::doWeekend_wholeDay()
 	int threads = cuda_makeWeekendContactsKernel_threads;
 
 	//get the amount of shared memory needed for each block
-	size_t smem_size = sizeof(personId_t) + sizeof(kval_type_t);
-	smem_size *= MAX_CONTACTS_WEEKEND;
-	smem_size *= threads;
+	//size_t smem_size = sizeof(personId_t) + sizeof(kval_type_t);
+	//smem_size *= MAX_CONTACTS_WEEKEND;
+	//smem_size *= threads;
+
+	size_t smem_size = 0;
 
 	//launch kernel
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
@@ -3291,15 +3293,18 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 										   day_t current_day,randOffset_t rand_offset)
 
 {
-	int contactsPerBlock = blockDim.x * MAX_CONTACTS_WEEKDAY;
+	//int contactsPerBlock = blockDim.x * MAX_CONTACTS_WEEKDAY;
 	
-	extern __shared__ int sharedMem[];
-	personId_t * victim_array = (personId_t *) sharedMem;
-	kval_type_t * contact_kval_array = (kval_type_t *) &victim_array[contactsPerBlock];
+	//extern __shared__ int sharedMem[];
+	//personId_t * victim_array = (personId_t *) sharedMem;
+	//kval_type_t * contact_kval_array = (kval_type_t *) &victim_array[contactsPerBlock];
 //	threefry2x64_ctr_t * shared_rand_ctrs = (threefry2x64_ctr_t *) &contact_kval_array[contactsPerBlock];
 
-	personId_t * myVictimArray = victim_array + (threadIdx.x * MAX_CONTACTS_WEEKDAY);
-	kval_type_t * myKvalArray = contact_kval_array + (threadIdx.x * MAX_CONTACTS_WEEKDAY);
+	//personId_t * myVictimArray = victim_array + (threadIdx.x * MAX_CONTACTS_WEEKDAY);
+	//kval_type_t * myKvalArray = contact_kval_array + (threadIdx.x * MAX_CONTACTS_WEEKDAY);
+
+	personId_t myVictimArray[MAX_CONTACTS_WEEKDAY];
+	kval_type_t myKvalArray[MAX_CONTACTS_WEEKDAY];
 
 //	threefry2x64_ctr_t * mySharedRandCtr = shared_rand_ctrs + (threadIdx.x / 4);
 //	int * mySharedInt = ((int *) mySharedRandCtr) + (threadIdx.x % 4);
@@ -3384,14 +3389,17 @@ __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected
 										 day_t current_day,  randOffset_t rand_offset)
 
 {
-	int contactsPerBlock = blockDim.x * MAX_CONTACTS_WEEKEND;
+	//int contactsPerBlock = blockDim.x * MAX_CONTACTS_WEEKEND;
 	
-	extern __shared__ int sharedMem[];
-	personId_t * victim_array = (personId_t *) sharedMem;
-	kval_type_t * contact_kval_array = (kval_type_t *) &victim_array[contactsPerBlock];
+	//extern __shared__ int sharedMem[];
+	//personId_t * victim_array = (personId_t *) sharedMem;
+	//kval_type_t * contact_kval_array = (kval_type_t *) &victim_array[contactsPerBlock];
 
-	personId_t * myVictimArray = victim_array + (threadIdx.x * MAX_CONTACTS_WEEKEND);
-	kval_type_t * myKvalArray = contact_kval_array + (threadIdx.x * MAX_CONTACTS_WEEKEND);
+	//personId_t * myVictimArray = victim_array + (threadIdx.x * MAX_CONTACTS_WEEKEND);
+	//kval_type_t * myKvalArray = contact_kval_array + (threadIdx.x * MAX_CONTACTS_WEEKEND);
+
+	personId_t myVictimArray[MAX_CONTACTS_WEEKEND];
+	kval_type_t myKvalArray[MAX_CONTACTS_WEEKEND];
 
 	const int rand_counts_consumed = 6;
 

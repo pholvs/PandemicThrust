@@ -6,7 +6,7 @@
 #include "resource_logging.h"
 
 #if CUDA_PROFILER_ENABLE == 1
-//#include "cuda_profiler_api.h"
+#include "cuda_profiler_api.h"
 #endif
 
 #ifdef _MSC_VER
@@ -32,8 +32,8 @@ int main()
 	if(MAIN_DELAY_SECONDS > 0)
 		delay_start();
 
-//	if(CUDA_PROFILER_ENABLE)
-//		cudaProfilerStart();
+	if(CUDA_PROFILER_ENABLE)
+		cudaProfilerStart();
 
 	logging_pollMemUsage_doSetup(POLL_MEMORY_USAGE, OUTPUT_FILES_IN_PARENTDIR);
 
@@ -43,8 +43,8 @@ int main()
 
 	logging_pollMemoryUsage_done();
 
-//	if(CUDA_PROFILER_ENABLE)
-//		cudaProfilerStop();
+	if(CUDA_PROFILER_ENABLE)
+		cudaProfilerStop();
 
 //	cudaDeviceReset();
 
