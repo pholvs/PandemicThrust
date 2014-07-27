@@ -1264,14 +1264,9 @@ void PandemicSim::doWeekday_wholeDay()
 
 	size_t smem_size = 0;
 
-	kernel_weekday_sharedMem<<<blocks,threads,smem_size>>> (infected_count,
-		infected_indexes_ptr,people_ages_ptr,
-		people_households_ptr,household_offsets_ptr,
-		workplace_offsets_ptr,workplace_people_ptr,
+	kernel_weekday_sharedMem<<<blocks,threads,smem_size>>> (
+		infected_count,	infected_indexes_ptr,
 		errand_locationOffsets_ptr, errand_people_doubleBuffer.Current(),
-		people_status_pandemic_ptr,people_status_seasonal_ptr,
-		people_days_pandemic_ptr,people_days_seasonal_ptr,
-		people_gens_pandemic_ptr,people_gens_seasonal_ptr,
 #if SIM_VALIDATION == 1
 		daily_contact_infectors_ptr, daily_contact_victims_ptr,
 		daily_contact_kval_types_ptr, daily_action_type_ptr,
@@ -1389,11 +1384,7 @@ void PandemicSim::doWeekend_wholeDay()
 
 	kernel_weekend_sharedMem<<<blocks,threads,smem_size>>>(
 		infected_count,	infected_indexes_ptr,
-		people_households_ptr,household_offsets_ptr,
 		errand_locationOffsets_ptr, errand_people_doubleBuffer.Current(),
-		people_status_pandemic_ptr,people_status_seasonal_ptr,
-		people_days_pandemic_ptr,people_days_seasonal_ptr,
-		people_gens_pandemic_ptr,people_gens_seasonal_ptr,
 #if SIM_VALIDATION == 1
 		daily_contact_infectors_ptr,daily_contact_victims_ptr, 
 		daily_contact_kval_types_ptr, daily_action_type_ptr,
@@ -1644,8 +1635,6 @@ int roundHalfUp_toInt(double d)
 
 __device__ kval_t device_makeContacts_weekday(
 	personId_t myIdx, age_t myAge,
-	locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-	locOffset_t * workplace_offsets, personId_t * workplace_people,
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	personId_t * output_victim_arr, kval_type_t * output_kval_arr,
 #if SIM_VALIDATION == 1
@@ -1667,6 +1656,10 @@ __device__ kval_t device_makeContacts_weekday(
 
 	kval_t household_kval_sum = 0;
 	{
+
+		locId_t * household_lookup = device_arrayPtrStruct->people_households;
+		locOffset_t * household_offsets = device_arrayPtrStruct->household_locOffsets;
+
 		locOffset_t loc_offset;
 		int loc_count;
 
@@ -1690,14 +1683,15 @@ __device__ kval_t device_makeContacts_weekday(
 			NULL,	//workplace_people
 			output_victim_arr + 2,
 			output_kval_arr + 2);			
-	}
 
 #if SIM_VALIDATION == 1
-	locId_t hh = household_lookup[myIdx];
-	output_contact_location[0] = hh;
-	output_contact_location[1] = hh;
-	output_contact_location[2] = hh;
+		locId_t hh = household_lookup[myIdx];
+		output_contact_location[0] = hh;
+		output_contact_location[1] = hh;
+		output_contact_location[2] = hh;
 #endif
+	}
+
 
 	//generate the second set of random numbers
 	threefry2x64_ctr_t tf_ctr_2 = {{myRandOffset + 1, myRandOffset + 1}};
@@ -1708,6 +1702,10 @@ __device__ kval_t device_makeContacts_weekday(
 	kval_t workplace_kval_sum = 0;
 	{
 		locId_t loc_wp = device_recalcWorkplace(myIdx,myAge);
+
+		locOffset_t * workplace_offsets = device_arrayPtrStruct->workplace_locOffsets;
+		personId_t * workplace_people = device_arrayPtrStruct->workplace_people;
+
 
 		int loc_count;
 		locOffset_t loc_offset;
@@ -1797,7 +1795,6 @@ __device__ kval_t device_makeContacts_weekday(
 }
 
 __device__ kval_t device_makeContacts_weekend(personId_t myIdx,
-											  locId_t * household_lookup, locOffset_t * household_offsets, // personId_t * household_people,
 											  locOffset_t * errand_loc_offsets, personId_t * errand_people,
 											  personId_t * output_victim_ptr, kval_type_t * output_kval_ptr,
 #if SIM_VALIDATION == 1
@@ -1819,6 +1816,10 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx,
 	//household: make three contacts
 	kval_t household_kval_sum = 0;
 	{
+		locId_t * household_lookup = device_arrayPtrStruct->people_households;
+		locOffset_t * household_offsets = device_arrayPtrStruct->household_locOffsets;
+
+
 		int loc_count;
 		locOffset_t loc_offset;
 
@@ -1841,7 +1842,6 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx,
 			NULL, //household_people
 			output_victim_ptr + 2,
 			output_kval_ptr + 2);
-	}
 
 #if SIM_VALIDATION == 1
 		locId_t hh = household_lookup[myIdx];
@@ -1849,6 +1849,8 @@ __device__ kval_t device_makeContacts_weekend(personId_t myIdx,
 		output_contact_loc_ptr[1] = hh;
 		output_contact_loc_ptr[2] = hh;
 #endif
+	}
+
 
 	//get an errand profile between 0 and 5
 	errandContactsProfile_t myContactsProfile = rand_union.i[3] % NUM_WEEKEND_ERRAND_PROFILES;
@@ -2740,7 +2742,7 @@ void PandemicSim::setup_fetchVectorPtrs()
 	host_arrayPtrStruct->workplace_locOffsets = thrust::raw_pointer_cast(workplace_offsets.data());
 	host_arrayPtrStruct->errand_locOffsets = thrust::raw_pointer_cast(errand_locationOffsets.data());
 
-//	host_arrayPtrStruct->workplace_people = thrust::raw_pointer_cast(workplace_people.data());
+	host_arrayPtrStruct->workplace_people = thrust::raw_pointer_cast(workplace_people.data());
 //	host_arrayPtrStruct->errand_people = thrust::raw_pointer_cast(errand_people_table_a.data());
 
 //	host_arrayPtrStruct->workplace_max_contacts = thrust::raw_pointer_cast(workplace_max_contacts.data());
@@ -3127,14 +3129,15 @@ __device__ int device_setInfectionStatus(status_t profile_to_set, day_t day_to_s
 __device__ action_t device_doInfectionActionImmediately(personId_t victim,day_t day_to_set,
 												bool infects_pandemic, bool infects_seasonal,
 												status_t profile_p_to_set, status_t profile_s_to_set,
-												gen_t gen_p_to_set, gen_t gen_s_to_set,
-												status_t * people_status_pandemic, status_t * people_status_seasonal,
-												day_t * people_days_pandemic, day_t * people_days_seasonal,
-												gen_t * people_gens_pandemic, gen_t * people_gens_seasonal)
+												gen_t gen_p_to_set, gen_t gen_s_to_set)
 {
 	int success_pandemic = ACTION_INFECT_NONE;
 	if(infects_pandemic)
 	{
+		status_t * people_status_pandemic = device_arrayPtrStruct->people_status_pandemic;
+		day_t * people_days_pandemic = device_arrayPtrStruct->people_days_pandemic;
+		gen_t * people_gens_pandemic = device_arrayPtrStruct->people_gens_pandemic;
+
 		//returns 1 if action was successful, 0 otherwise
 		success_pandemic = device_setInfectionStatus(profile_p_to_set, day_to_set, gen_p_to_set,
 			people_status_pandemic + victim, people_days_pandemic + victim, people_gens_pandemic + victim);
@@ -3144,6 +3147,10 @@ __device__ action_t device_doInfectionActionImmediately(personId_t victim,day_t 
 	int success_seasonal = ACTION_INFECT_NONE;
 	if(infects_seasonal)
 	{
+		status_t * people_status_seasonal = device_arrayPtrStruct->people_status_seasonal;
+		day_t * people_days_seasonal = device_arrayPtrStruct->people_days_seasonal;
+		gen_t * people_gens_seasonal = device_arrayPtrStruct->people_gens_seasonal;
+
 		success_seasonal = device_setInfectionStatus(profile_s_to_set,day_to_set, gen_s_to_set,
 			people_status_seasonal + victim, people_days_seasonal + victim, people_gens_seasonal + victim);
 		success_seasonal *= ACTION_INFECT_SEASONAL;
@@ -3158,9 +3165,6 @@ __device__ action_t device_doInfectionActionImmediately(personId_t victim,day_t 
 __device__ void device_doContactsToActions_immediately(
 	personId_t myIdx, kval_t kval_sum,
 	personId_t * contact_victims_arr, kval_type_t *contact_type_arr, int contacts_per_infector,
-	status_t * people_status_p_arr, status_t * people_status_s_arr,
-	day_t * people_days_pandemic, day_t * people_days_seasonal,
-	gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
 #if SIM_VALIDATION == 1
 	action_t * output_action_arr,
 	float * rand_arr_1, float * rand_arr_2, float * rand_arr_3, float * rand_arr_4,
@@ -3175,6 +3179,11 @@ __device__ void device_doContactsToActions_immediately(
 
 	//		if(kval_sum == 0)
 	//			continue;
+
+
+	status_t * people_status_p_arr = device_arrayPtrStruct->people_status_pandemic;
+	status_t * people_status_s_arr = device_arrayPtrStruct->people_status_seasonal;
+
 	status_t status_p = people_status_p_arr[myIdx];
 	status_t status_s = people_status_s_arr[myIdx];
 
@@ -3187,6 +3196,7 @@ __device__ void device_doContactsToActions_immediately(
 	//int profile_day_p = -1;
 	if(status_is_infected(status_p))
 	{
+		day_t * people_days_pandemic = device_arrayPtrStruct->people_days_pandemic;
 		int profile_day_p = current_day - people_days_pandemic[myIdx];
 
 		//refinement: when doing contacts_to_actions live from shared memory, status_p may be changed out from
@@ -3197,6 +3207,8 @@ __device__ void device_doContactsToActions_immediately(
 			int profile_p = get_profile_from_status(status_p);
 
 			inf_prob_p = device_calculateInfectionProbability(profile_p,profile_day_p, STRAIN_PANDEMIC,kval_sum);
+
+			gen_t * people_gens_pandemic = device_arrayPtrStruct->people_gens_pandemic;
 			gen_p_to_set = people_gens_pandemic[myIdx] + 1;
 		}
 	}
@@ -3204,6 +3216,7 @@ __device__ void device_doContactsToActions_immediately(
 	//int profile_day_s = -1;
 	if(status_is_infected(status_s))
 	{
+		day_t * people_days_seasonal = device_arrayPtrStruct->people_days_seasonal;
 		int profile_day_s = current_day - people_days_seasonal[myIdx];
 
 		if(profile_day_s >= 0 && profile_day_s < CULMINATION_PERIOD)
@@ -3211,6 +3224,8 @@ __device__ void device_doContactsToActions_immediately(
 			int profile_s = get_profile_from_status(status_s);
 
 			inf_prob_s = device_calculateInfectionProbability(profile_s ,profile_day_s, STRAIN_SEASONAL,kval_sum);
+
+			gen_t * people_gens_seasonal = device_arrayPtrStruct->people_gens_seasonal;
 			gen_s_to_set = people_gens_seasonal[myIdx] + 1;
 		}
 	}
@@ -3255,10 +3270,7 @@ __device__ void device_doContactsToActions_immediately(
 			contact_victim, current_day + 1,
 			infects_p,infects_s,
 			profile_p_to_set,profile_s_to_set,
-			gen_p_to_set, gen_s_to_set,
-			people_status_p_arr,people_status_s_arr,
-			people_days_pandemic,people_days_seasonal,
-			people_gens_pandemic,people_gens_seasonal);
+			gen_p_to_set, gen_s_to_set);
 
 #if SIM_VALIDATION == 1
 			//if result was successful, copy out the action that resulted
@@ -3276,13 +3288,8 @@ __device__ void device_doContactsToActions_immediately(
 
 
 
-__global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
-										   locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-										   locOffset_t * workplace_offsets, personId_t * workplace_people,
+__global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes,
 										   locOffset_t * errand_loc_offsets, personId_t * errand_people,
-										   status_t * people_status_p_arr, status_t * people_status_s_arr,
-										   day_t * people_days_pandemic, day_t * people_days_seasonal,
-										   gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
 #if SIM_VALIDATION == 1
 										   personId_t * output_infector_arr, personId_t * output_victim_arr,
 										   kval_type_t * output_kval_arr,  action_t * output_action_arr, 
@@ -3329,12 +3336,12 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 		int output_offset_base = MAX_CONTACTS_WEEKDAY * myPos;
 
 		personId_t myIdx = infected_indexes[myPos];
+
+		age_t * people_age = device_arrayPtrStruct->people_ages;
 		age_t myAge = people_age[myIdx];
 
 		kval_t kval_sum = device_makeContacts_weekday(
 			myIdx, myAge,
-			household_lookup, household_offsets,// household_people,
-			workplace_offsets, workplace_people,
 			errand_loc_offsets, errand_people,
 			myVictimArray, myKvalArray,
 #if SIM_VALIDATION == 1
@@ -3349,9 +3356,6 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 		device_doContactsToActions_immediately(
 			myIdx, kval_sum,
 			myVictimArray,myKvalArray, MAX_CONTACTS_WEEKDAY,
-			people_status_p_arr,people_status_s_arr,
-			people_days_pandemic,people_days_seasonal,
-			people_gens_pandemic,people_gens_seasonal,
 #if SIM_VALIDATION == 1
 			output_action_arr + output_offset_base,
 			float_rand1 + output_offset_base, float_rand2 + output_offset_base,
@@ -3374,11 +3378,7 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 }
 
 __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected_indexes,
-										 locId_t * household_lookup, locOffset_t * household_offsets,
 										 locOffset_t * errand_loc_offsets, personId_t * errand_people,
-										 status_t * people_status_p_arr, status_t * people_status_s_arr,
-										 day_t * people_days_pandemic, day_t * people_days_seasonal,
-										 gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
 #if SIM_VALIDATION == 1
 										 personId_t * output_infector_arr, personId_t * output_victim_arr, 
 										 kval_type_t * output_kval_arr, action_t * output_action_arr,
@@ -3413,7 +3413,6 @@ __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected
 
 		kval_t kval_sum = device_makeContacts_weekend(
 			myIdx,
-			household_lookup,household_offsets,
 			errand_loc_offsets,errand_people,
 			myVictimArray,myKvalArray,
 #if SIM_VALIDATION == 1
@@ -3428,9 +3427,6 @@ __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected
 		device_doContactsToActions_immediately(
 			myIdx, kval_sum,
 			myVictimArray,myKvalArray, MAX_CONTACTS_WEEKEND,
-			people_status_p_arr,people_status_s_arr,
-			people_days_pandemic,people_days_seasonal,
-			people_gens_pandemic,people_gens_seasonal,
 #if SIM_VALIDATION == 1
 			output_action_arr + output_offset_base,
 			float_rand1 + output_offset_base, float_rand2 + output_offset_base,

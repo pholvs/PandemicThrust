@@ -115,7 +115,7 @@ struct simArrayPtrStruct_t{
 	locOffset_t * workplace_locOffsets;
 	locOffset_t * errand_locOffsets;
 
-//	personId_t * workplace_people;
+	personId_t * workplace_people;
 //	personId_t * errand_people;
 
 //	maxContacts_t * workplace_max_contacts;

@@ -20,7 +20,7 @@
 #define NAME_OF_SIM_TYPE "gpu_cub"
 #define MAIN_DELAY_SECONDS 0
 
-#define CONSOLE_OUTPUT 0
+#define CONSOLE_OUTPUT 1
 #define TIMING_BATCH_MODE 0
 #define OUTPUT_FILES_IN_PARENTDIR 0
 #define POLL_MEMORY_USAGE 0
@@ -374,13 +374,8 @@ void debug_assert(bool condition, char * message, int idx);
 
 //sharedmem contact methods
 
-__global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes, age_t * people_age,
-										 locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-										 locOffset_t * workplace_offsets, personId_t * workplace_people,
+__global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected_indexes, 
 										 locOffset_t * errand_loc_offsets, personId_t * errand_people,
-										 status_t * people_status_p_arr, status_t * people_status_s_arr,
-										 day_t * people_days_pandemic, day_t * people_days_seasonal,
-										 gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
 #if SIM_VALIDATION == 1
 										 personId_t * output_infector_arr, personId_t * output_victim_arr,
 										 kval_type_t * output_kval_arr,  action_t * output_action_arr, 
@@ -392,8 +387,6 @@ __global__ void kernel_weekday_sharedMem(int num_infected, personId_t * infected
 
 __device__ kval_t device_makeContacts_weekday(
 	personId_t myIdx, age_t myAge,
-	locId_t * household_lookup, locOffset_t * household_offsets,// personId_t * household_people,
-	locOffset_t * workplace_offsets, personId_t * workplace_people,
 	personId_t * errand_loc_offsets, personId_t * errand_people,
 	personId_t * output_victim_arr, kval_type_t * output_kval_arr,
 #if SIM_VALIDATION == 1
@@ -402,11 +395,7 @@ __device__ kval_t device_makeContacts_weekday(
 	randOffset_t myRandOffset);
 
 __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected_indexes,
-										 locId_t * household_lookup, locOffset_t * household_offsets,
 										 locOffset_t * errand_loc_offsets, personId_t * errand_people,
-										 status_t * people_status_p_arr, status_t * people_status_s_arr,
-										 day_t * people_days_pandemic, day_t * people_days_seasonal,
-										 gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
 #if SIM_VALIDATION == 1
 										 personId_t * output_infector_arr, personId_t * output_victim_arr, 
 										 kval_type_t * output_kval_arr, action_t * output_action_arr,
@@ -417,7 +406,6 @@ __global__ void kernel_weekend_sharedMem(int num_infected, personId_t * infected
 										 day_t current_day,  randOffset_t rand_offset);
 
 __device__ kval_t device_makeContacts_weekend(personId_t myIdx,
-											  locId_t * household_lookup, locOffset_t * household_offsets, // personId_t * household_people,
 											  locOffset_t * errand_loc_offsets, personId_t * errand_people,
 											  personId_t * output_victim_ptr, kval_type_t * output_kval_ptr,
 #if SIM_VALIDATION == 1
@@ -431,16 +419,10 @@ __device__ int device_setInfectionStatus(status_t profile_to_set, day_t day_to_s
 __device__ action_t device_doInfectionActionImmediately(personId_t victim,day_t day_to_set,
 														bool infects_pandemic, bool infects_seasonal,
 														status_t profile_p_to_set, status_t profile_s_to_set,
-														gen_t gen_p_to_set, gen_t gen_s_to_set,
-														status_t * people_status_pandemic, status_t * people_status_seasonal,
-														day_t * people_days_pandemic, day_t * people_days_seasonal,
-														gen_t * people_gens_pandemic, gen_t * people_gens_seasonal);
+														gen_t gen_p_to_set, gen_t gen_s_to_set);
 __device__ void device_doContactsToActions_immediately(
 	personId_t myIdx, kval_t kval_sum,
 	personId_t * contact_victims_arr, kval_type_t *contact_type_arr, int contacts_per_infector,
-	status_t * people_status_p_arr, status_t * people_status_s_arr,
-	day_t * people_days_pandemic, day_t * people_days_seasonal,
-	gen_t * people_gens_pandemic, gen_t * people_gens_seasonal,
 #if SIM_VALIDATION == 1
 	action_t * output_action_arr,
 	float * rand_arr_1, float * rand_arr_2, float * rand_arr_3, float * rand_arr_4,
