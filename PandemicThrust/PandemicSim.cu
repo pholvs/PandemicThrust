@@ -1186,7 +1186,10 @@ void PandemicSim::debug_dump_array_toTempFile(const char * filename, const char 
 void PandemicSim::doWeekday_wholeDay()
 {
 	if(SIM_PROFILING)
+	{
 		profiler.beginFunction(current_day, "doWeekday_wholeDay");
+		profiler.beginFunction(current_day,"doWeekday_wholeDay_generateSchedulesKernel");
+	}
 
 	//generate errands and afterschool locations
 	weekday_generateAfterschoolAndErrandDestinations();
@@ -1219,12 +1222,24 @@ void PandemicSim::doWeekday_wholeDay()
 			errand_people_doubleBuffer.Current() + people_offset_start,
 			errand_people_doubleBuffer.Current() + people_offset_end);
 	}*/
+	if(SIM_PROFILING){
+		profiler.endFunction(current_day,number_people);
+		profiler.beginFunction(current_day,"doWeekday_wholeDay_setup_sort");
+	}
+
+
 
 	int num_errands =  (2 * number_people);
 	cub::DeviceRadixSort::SortPairs(
 		errand_sorting_tempStorage, errand_sorting_tempStorage_size, //temp buffer
 		people_errands_doubleBuffer, errand_people_doubleBuffer,	//key, val
 		num_errands);	//N
+
+	if(SIM_PROFILING)
+	{
+		profiler.endFunction(current_day,num_errands);
+		profiler.beginFunction(current_day,"doWeekday_wholeDay_setup_locationSearch");
+	}
 
 
 	thrust::counting_iterator<locId_t> count_it(0);
@@ -1247,6 +1262,12 @@ void PandemicSim::doWeekday_wholeDay()
 			errand_locationOffsets.begin());
 
 	errand_locationOffsets[NUM_WEEKDAY_ERRAND_HOURS * number_workplaces] = (NUM_WEEKDAY_ERRANDS * number_people);
+
+	if(SIM_PROFILING)
+	{
+		profiler.endFunction(current_day,NUM_WEEKEND_ERRAND_HOURS * number_workplaces);
+		profiler.beginFunction(current_day,"doWeekday_wholeDay_kernel");
+	}
 
 //	debug_dump_array_toTempFile("../sorted_dests.txt", "errand_dest", &errand_people_destinations, number_people * NUM_WEEKDAY_ERRAND_HOURS);
 //	debug_dump_array_toTempFile("../loc_offsets.txt", "loc_offset", &errand_locationOffsets_multiHour, NUM_WEEKDAY_ERRAND_HOURS * number_workplaces);
@@ -1288,7 +1309,10 @@ void PandemicSim::doWeekday_wholeDay()
 //	debug_dump_array_toTempFile("../infected_kvals.txt","kval",&infected_daily_kval_sum, infected_count);
 
 	if(SIM_PROFILING)
+	{
 		profiler.endFunction(current_day,infected_count);
+		profiler.endFunction(current_day,infected_count);
+	}
 }
 
 void PandemicSim::doWeekend_wholeDay()
