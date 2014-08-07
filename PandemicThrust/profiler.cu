@@ -7,11 +7,15 @@
 #include <stdexcept>
 
 //call once to initialize the
-void CudaProfiler::initStack()
+void CudaProfiler::initStack(const char * profile_filename, const char * log_filename)
 {
-	fProfileLog = fopen("../profile_log.csv", "w");
+	fProfileLog = fopen(profile_filename, "w");
 	fprintf(fProfileLog, "day,stack_depth,function_name,problem_size,inclusive_time_milliseconds,exclusive_time_milliseconds\n");
-	fFunctionCalls = fopen("../profile_function_log.csv", "w");
+
+	if(log_filename != NULL)
+		fFunctionCalls = fopen(log_filename, "w");
+	else
+		fFunctionCalls = NULL;
 	
 	stack_depth = -1;
 	
@@ -31,6 +35,7 @@ void CudaProfiler::beginFunction(int current_day, const char * function_name)
 	{
 		fprintf(fProfileLog,"Error: profiler stack overflowed!\n");
 		fflush(fProfileLog);
+		
 		exit(1);
 	}
 	
@@ -38,8 +43,10 @@ void CudaProfiler::beginFunction(int current_day, const char * function_name)
 	profile_timeInChildren[stack_depth] = 0.0;
 	profile_functionName[stack_depth] = function_name;
 
-	fprintf(fFunctionCalls, "%d,%d,beginning %s\n",current_day, stack_depth, function_name);
-	fflush(fFunctionCalls);
+	if(fFunctionCalls != NULL){
+		fprintf(fFunctionCalls, "%d,%d,beginning %s\n",current_day, stack_depth, function_name);
+		fflush(fFunctionCalls);
+	}
 	cudaEventRecord(profile_eventStack_start[stack_depth]);
 }
 
@@ -72,8 +79,11 @@ void CudaProfiler::endFunction(int current_day, int problem_size)
 			inclusive_milliseconds, exclusive_milliseconds);
 	fflush(fProfileLog);
 
-	fprintf(fFunctionCalls, "%d,%d,ending %s\n", current_day, stack_depth, profile_functionName[stack_depth]);
-	fflush(fFunctionCalls);
+	if(fFunctionCalls != NULL)
+	{
+		fprintf(fFunctionCalls, "%d,%d,ending %s\n", current_day, stack_depth, profile_functionName[stack_depth]);
+		fflush(fFunctionCalls);
+	}
 	//rotate to parent
 	stack_depth--;
 }
@@ -81,8 +91,10 @@ void CudaProfiler::endFunction(int current_day, int problem_size)
 void CudaProfiler::done()
 {
 	//close streams
-	fclose(fFunctionCalls);
 	fclose(fProfileLog);
+
+	if(fFunctionCalls != NULL)
+		fclose(fFunctionCalls);
 
 	//destroy event objects
 	for(int i = 0; i < MAX_STACK_DEPTH; i++)

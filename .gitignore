@@ -21,7 +21,6 @@ debug_filtered_actions.csv
 debug_infected.csv
 debug_actions.csv
 PandemicThrust/temp.txt
-pandemicthrust
 output_mem.csv
 output_rn.csv
 output_infected_stats.csv

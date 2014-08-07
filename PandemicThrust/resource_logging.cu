@@ -1,5 +1,7 @@
 #include "resource_logging.h"
 
+#define RESOURCE_LOG_FILENAME "output_resource_log.csv"
+
 #ifdef _MSC_VER
 #define VISUAL_STUDIO 1
 #else
@@ -14,6 +16,18 @@ size_t max_memory_used = 0;
 
 cudaEvent_t event_start, event_stop;
 
+float p_scale=0.f, l_scale=0.f;
+const char * sim_type, * sim_device;
+int core_seed;
+
+bool daily_log;
+
+bool file_exists(const char * filename)
+{
+	std::ifstream ifile(filename);
+	return ifile;
+}
+
 void logging_pollMemUsage_doSetup(bool log_memory_usage, bool outputFilesInParentDir)
 {
 	//create events
@@ -22,7 +36,10 @@ void logging_pollMemUsage_doSetup(bool log_memory_usage, bool outputFilesInParen
 
 	cudaMemGetInfo(&initial_free_bytes, &initial_total_bytes);
 
-	if(log_memory_usage){
+	daily_log = log_memory_usage;
+
+	if(daily_log)
+	{
 		//do initial setup for memory log
 		if(outputFilesInParentDir)
 			fMemory = fopen("../output_mem.csv","w");
@@ -52,12 +69,15 @@ void logging_pollMemoryUsage_takeSample(int day)
 	if(bytes_used > max_memory_used)
 		max_memory_used = bytes_used;
 	
-	if(VISUAL_STUDIO)
-		fprintf(fMemory,"%d,%Iu,%Iu,%Iu,%Iu\n",
+	if(daily_log)
+	{
+		if(VISUAL_STUDIO)
+			fprintf(fMemory,"%d,%Iu,%Iu,%Iu,%Iu\n",
 			day, current_free_bytes, bytes_used, current_total_bytes, megabytes_used);
-	else
-		fprintf(fMemory, "%d,%zu,%zu,%zu,%zu\n",
+		else
+			fprintf(fMemory, "%d,%zu,%zu,%zu,%zu\n",
 			day, current_free_bytes, bytes_used, current_total_bytes, megabytes_used);
+	}
 }
 
 void logging_pollMemoryUsage_done()
@@ -70,25 +90,27 @@ void logging_pollMemoryUsage_done()
 	cudaEventElapsedTime(&elapsed_milliseconds, event_start, event_stop);
 	float elapsed_seconds = (float) elapsed_milliseconds / 1000;
 
-	size_t current_free_bytes, current_total_bytes;
-	cudaMemGetInfo(&current_free_bytes, &current_total_bytes);
-
-	size_t bytes_used = initial_free_bytes - current_free_bytes;
-	if(bytes_used > max_memory_used)
-		max_memory_used = bytes_used;
-
 	size_t max_megabytes_used = max_memory_used >> 20;
 
-
-	FILE * fResourceLog = fopen("output_resource_log.csv", "w");
-	fprintf(fResourceLog, "runtime_milliseconds,runtime_seconds,bytes_used,megabytes_used\n");
+	FILE * fResourceLog;
+	bool log_exists = file_exists(RESOURCE_LOG_FILENAME);
+	
+	if(log_exists)
+	{
+		fResourceLog = fopen(RESOURCE_LOG_FILENAME, "a");
+	}
+	else
+	{
+		fResourceLog= fopen(RESOURCE_LOG_FILENAME, "w");
+		fprintf(fResourceLog, "sim_type,sim_device,people_sim_scale,location_sim_scale,seed,runtime_milliseconds,runtime_seconds,bytes_used,megabytes_used\n");
+	}
 
 	if(VISUAL_STUDIO)
-		fprintf(fResourceLog,"%f,%f,%Iu,%Iu\n",
-			elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
+		fprintf(fResourceLog,"%s,%s,%f,%f,%d,%f,%f,%Iu,%Iu\n",
+			sim_type,sim_device,p_scale,l_scale,core_seed,elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
 	else
-		fprintf(fResourceLog, "%f,%f,%zu,%zu\n",
-			elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
+		fprintf(fResourceLog, "%s,%s,%f,%f,%d,%f,%f,%zu,%zu\n",
+			sim_type,sim_device,p_scale,l_scale,core_seed,elapsed_milliseconds,elapsed_seconds,max_memory_used,max_megabytes_used);
 	fclose(fResourceLog);
 
 
@@ -97,4 +119,13 @@ void logging_pollMemoryUsage_done()
 
 	cudaEventDestroy(event_start);
 	cudaEventDestroy(event_stop);
+}
+
+void logging_setSimData(float people_scale, float loc_scale, const char * sim_type_string, const char * device, int seed)
+{
+	p_scale = people_scale;
+	l_scale = loc_scale;
+	sim_type = sim_type_string;
+	sim_device = device;
+	core_seed = seed;
 }

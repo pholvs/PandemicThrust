@@ -9,6 +9,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="sql_logging.cpp" />
+    <ClCompile Include="host_functions.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PandemicSim.h">
@@ -32,10 +34,27 @@
     <ClInclude Include="resource_logging.h">
       <Filter>Header files</Filter>
     </ClInclude>
+    <ClInclude Include="sql_logging.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda_includes.h" />
+    <ClInclude Include="host_functions.h" />
+    <ClInclude Include="device_K20.h">
+      <Filter>device_configs</Filter>
+    </ClInclude>
+    <ClInclude Include="device_GT640.h">
+      <Filter>device_configs</Filter>
+    </ClInclude>
+    <ClInclude Include="device_Q880M.h">
+      <Filter>device_configs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header files">
       <UniqueIdentifier>{7fdfc2ff-786a-4e54-a037-6698d38a8851}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="device_configs">
+      <UniqueIdentifier>{10045a54-0997-4779-ada8-375e0aa3cf58}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>
