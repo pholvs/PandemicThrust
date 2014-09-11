@@ -1,0 +1,2 @@
+max_proportion,day
+0.000025,0

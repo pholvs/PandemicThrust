@@ -1,0 +1,4 @@
+output_rn.csv
+output_infected_stats.csv
+output_resource_log.csv
+profile_log.csv

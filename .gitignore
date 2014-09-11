@@ -1,6 +1,6 @@
-PandemicThrust/Debug/
-PandemicThrust/Release/
-PandemicThrust/x64/
+PandemicThrust/PandemicThrust/Debug/
+PandemicThrust/PandemicThrust/Release/
+PandemicThrust/PandemicThrust/x64/
 Debug/
 Release/
 x64/
@@ -20,7 +20,7 @@ debug_contacts_kernel_setup.csv
 debug_filtered_actions.csv
 debug_infected.csv
 debug_actions.csv
-PandemicThrust/temp.txt
+PandemicThrust/PandemicThrust/temp.txt
 output_mem.csv
 output_rn.csv
 output_infected_stats.csv
