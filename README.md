@@ -1,6 +1,8 @@
 ### What is this repository for?
 
-This is the repository for PandemicThrust, an agent-based influenza simulation which runs on GPUs.  For full model details, consult the thesis file.
+This is the repository for PandemicThrust, an agent-based influenza simulation which runs on GPUs.  It is designed to support rapid operational modeling using observed field reproduction numbers, while supporting fine-grained intervention strategies.  It is capable of simulating a population of 50 million persons for 100 days in approximately 24 seconds using an NVIDIA K20.
+
+For full model details, consult the thesis file.
 
 Since this is a stochastic simulation, batch control is provided by the PythonBatcher program.  Sample scripts to write the configuration files for enqueueing are provided in a separate directory.
 
