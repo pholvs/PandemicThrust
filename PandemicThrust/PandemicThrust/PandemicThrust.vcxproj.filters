@@ -9,7 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp" />
-    <ClCompile Include="sql_logging.cpp" />
     <ClCompile Include="host_functions.cpp" />
   </ItemGroup>
   <ItemGroup>

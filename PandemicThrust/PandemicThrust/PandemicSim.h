@@ -217,11 +217,9 @@ public:
 
 	void doWeekday_wholeDay();
 	void weekday_generateAfterschoolAndErrandDestinations();
-	void weekday_doInfectedSetup_wholeDay();
 
 	void doWeekend_wholeDay();
 	void weekend_assignErrands();
-	void weekend_doInfectedSetup_wholeDay();
 
 	void validateContacts_wholeDay();
 	void debug_copyFixedData();
@@ -437,11 +435,6 @@ __device__ void device_recalc_weekendErrandDests(personId_t myIdx, locId_t * err
 
 __device__ void device_setup_assignWorkplaceOrSchool(unsigned int rand_val, age_t * age_ptr,locId_t * workplace_ptr);
 __global__ void kernel_assignWorkplaces(age_t * people_ages_arr, locId_t * people_workplaces_arr, int number_people, randOffset_t rand_offset);
-
-
-__device__ void device_getCalibrationValues(day_t day_of_infection, status_t profile,dailyFloatSum_t * output_expected_infections, dailyFloatSum_t * output_kval_sum);
-
-__device__ void device_getMyKvalSum(personId_t personIdx);
 
 //currently unused
 struct personStatusStruct_t{
