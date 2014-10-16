@@ -11,39 +11,51 @@
 //#include "device_GT640.h"
 //#include "device_Q880M.h"
 
+//set to 1 for NVIDIA Graphical Profiler
 #define CUDA_PROFILER_ENABLE 1
 
+//G++ needs an inline max defined
 #ifndef __max
 #define __max(a,b) (((a) > (b)) ? (a) : (b))
 #endif
 
+//logged into output_resource_log and some other output files
 #define NAME_OF_SIM_TYPE "gpu_cub"
-#define MAIN_DELAY_SECONDS 0
 
+//1 for some status messages during run, 0 for totally silent
 #define CONSOLE_OUTPUT 1
-#define TIMING_BATCH_MODE 0
-#define OUTPUT_FILES_IN_PARENTDIR 0
-#define POLL_MEMORY_USAGE 0
-#define USE_PERSISTENT_FILE 1
 
+//if 1, output files go in ".." otherwise they go into "."
+#define OUTPUT_FILES_IN_PARENTDIR 0
+
+//if 0, memory usage is polled once per simulation
+//if 1, memory usage is polled each simulated day
+#define POLL_MEMORY_USAGE 0
+
+//force explicit synchronization after kernel calls to prevent any async issues
 #define DEBUG_SYNCHRONIZE_NEAR_KERNELS 0
 
+//use recursive stack profiler to log function calls?   Low overhead
 #define SIM_PROFILING 1
 
-//sim_validation must be 1 to log things
+//Write a file which contains the percentage of population with active infections at the peak of the simulation
+#define LOG_INFECTED_PROPORTION 1
+
+//logs the fraction of the population with active infections at the peak of the outbreak
+#define LOG_INFECTED_PROPORTION 1
+
+//Enables testing and debug-logging during run
+//preprocessor if's allow makefile to compile separate validation binary
 #ifndef SIM_VALIDATION
 #define SIM_VALIDATION 0
 #endif
 
-#define FLUSH_VALIDATION_IMMEDIATELY 0
-#define log_contacts 0
-#define log_infected_info 0
-#define log_location_info 0
-#define log_actions 0
-#define log_actions_filtered 0
-#define log_people_info 0
-
-#define LOG_INFECTED_PROPORTION 1
+//SIM_VALIDATION must be 1 or these do nothing
+#define FLUSH_VALIDATION_IMMEDIATELY 0	//force flush to disk immediately, prevents disappearing logs if program crashes
+#define log_contacts 0		//logs all contacts selected
+#define log_infected_info 0		//logs a list of infected agents and associated data
+#define log_location_info 0		//logs number of people at each location each hour
+#define log_actions 0			//logs what happened for each contact during each hour
 
 //if CALC_NUM_PEOPLE_FIRST==1, the household types will be generated twice.  
 //The first time will find the total population of the sim using a transform-reduce.
@@ -52,10 +64,6 @@
 //If ==0, then global memory must be allocated to store the household types and the exclusive-scans
 //This space will be allocated before the global arrays can be sized, and it can cause fragmentation
 #define CALC_NUM_PEOPLE_FIRST 1	
-
-//low overhead
-#define debug_log_function_calls 0
-
 
 class PandemicSim
 {

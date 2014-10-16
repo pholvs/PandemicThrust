@@ -11,7 +11,7 @@
 class CudaProfiler
 {
 public:
-	void initStack(const char * profile_filename, const char * log_filename);
+	void initStack(const char * profile_filename);
 	void beginFunction(int current_day, const char * function_name);
 	void endFunction(int current_day, int problem_size);
 	void dailyFlush();

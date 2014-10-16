@@ -9,29 +9,8 @@
 #include "cuda_profiler_api.h"
 #endif
 
-#ifdef _MSC_VER
-#include <Windows.h>
-
-void delay_start()
-{
-	int milliseconds = 1000 * MAIN_DELAY_SECONDS;
-	Sleep(milliseconds);
-}
-#else
-#include <unistd.h>
-
-void delay_start()
-{
-	sleep(MAIN_DELAY_SECONDS);
-}
-#endif
-
-
 int main()
 {
-	if(MAIN_DELAY_SECONDS > 0)
-		delay_start();
-
 	if(CUDA_PROFILER_ENABLE)
 		cudaProfilerStart();
 

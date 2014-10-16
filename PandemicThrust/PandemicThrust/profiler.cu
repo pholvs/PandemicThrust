@@ -7,15 +7,12 @@
 #include <stdexcept>
 
 //call once to initialize the
-void CudaProfiler::initStack(const char * profile_filename, const char * log_filename)
+void CudaProfiler::initStack(const char * profile_filename)
 {
 	fProfileLog = fopen(profile_filename, "w");
 	fprintf(fProfileLog, "day,stack_depth,function_name,problem_size,inclusive_time_milliseconds,exclusive_time_milliseconds\n");
 
-	if(log_filename != NULL)
-		fFunctionCalls = fopen(log_filename, "w");
-	else
-		fFunctionCalls = NULL;
+	fFunctionCalls = NULL;
 	
 	stack_depth = -1;
 	

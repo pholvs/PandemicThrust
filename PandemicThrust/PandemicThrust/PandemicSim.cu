@@ -111,10 +111,7 @@ PandemicSim::PandemicSim()
 		const char * profile_filename = OUTPUT_FILES_IN_PARENTDIR ? "../profile_log.csv" : "profile_log.csv";
 		const char * function_log_filename = NULL;
 
-		if(debug_log_function_calls)
-			function_log_filename = OUTPUT_FILES_IN_PARENTDIR ? "../function_log.csv" : "function_log.csv";
-
-		profiler.initStack(profile_filename,function_log_filename);
+		profiler.initStack(profile_filename);
 	}
 
 	cudaStreamCreate(&stream_secondary);
@@ -128,12 +125,9 @@ PandemicSim::PandemicSim()
 	//copy everything down to the GPU
 	setup_pushDeviceData();
 
-	if(TIMING_BATCH_MODE == 0)
-	{
-		setup_setCudaTopology();
-	}
+	setup_setCudaTopology();
 
-	if(SIM_VALIDATION && debug_log_function_calls)
+	if(SIM_VALIDATION)
 		debug_print("parameters loaded");
 
 }
@@ -164,7 +158,7 @@ void PandemicSim::setupSim()
 
 	current_day = 0;
 	
-	if(SIM_VALIDATION && debug_log_function_calls)
+	if(SIM_VALIDATION)
 		debug_print("setting up households");
 
 	//finish copydown of __constant__ sim data
@@ -206,7 +200,7 @@ void PandemicSim::setupSim()
 		profiler.endFunction(-1, number_people);
 	}
 
-	if(SIM_VALIDATION && debug_log_function_calls)
+	if(SIM_VALIDATION)
 		debug_print("simulation setup complete");
 
 	if(SIM_VALIDATION)
@@ -252,15 +246,6 @@ void PandemicSim::logging_openOutputStreams()
 			fActions = fopen("debug_actions.csv", "w");
 		fprintf(fActions, "current_day, i, infector, victim, action_type, action_type_string\n");
 	}
-
-	if(SIM_VALIDATION && log_actions_filtered)
-	{
-		if(OUTPUT_FILES_IN_PARENTDIR)
-			fActionsFiltered = fopen("../debug_filtered_actions.csv", "w");
-		else
-			fActionsFiltered = fopen("debug_filtered_actions.csv", "w");
-		fprintf(fActionsFiltered, "current_day, i, type, victim, victim_status_p, victim_gen_p, victim_status_s, victim_gen_s\n");
-	}
 	
 
 	if(SIM_VALIDATION)
@@ -302,7 +287,7 @@ void PandemicSim::setup_loadParameters()
 	FILE * fConstants = fopen("constants.csv","r");	//open file
 	if(fConstants == NULL)
 	{
-		debug_print("failed to open constants file");
+		//debug_print("failed to open constants file");
 		perror("Error opening constants file");
 		exit(1);
 	}
@@ -869,11 +854,6 @@ void PandemicSim::logging_closeOutputStreams()
 		fclose(fActions);
 	}
 
-	if(SIM_VALIDATION && log_actions_filtered)
-	{
-		fclose(fActionsFiltered);
-	}
-
 	if(LOG_INFECTED_PROPORTION)
 	{
 		FILE * fInfectedMaxPolling;
@@ -903,7 +883,7 @@ void PandemicSim::runToCompletion()
 
 	for(current_day = 0; current_day < MAX_DAYS; current_day++)
 	{
-		if(SIM_VALIDATION && debug_log_function_calls)
+		if(SIM_VALIDATION)
 			debug_print("beginning day...");
 
 		if(SIM_VALIDATION)
@@ -1273,11 +1253,8 @@ void PandemicSim::doWeekday_wholeDay()
 #endif
 		current_day, rand_offset);
 
-	if(TIMING_BATCH_MODE == 0)
-	{
-		const int rand_counts_consumed = 6;
-		rand_offset += (rand_counts_consumed * infected_count);
-	}
+	const int rand_counts_consumed = 6;
+	rand_offset += (rand_counts_consumed * infected_count);
 
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
@@ -1390,11 +1367,9 @@ void PandemicSim::doWeekend_wholeDay()
 	if(SIM_PROFILING)
 		profiler.endFunction(current_day,infected_count);
 
-	if(TIMING_BATCH_MODE == 0)
-	{
-		int rand_counts_consumed = 6;
-		rand_offset += (infected_count * rand_counts_consumed);
-	}
+	int rand_counts_consumed = 6;
+	rand_offset += (infected_count * rand_counts_consumed);
+
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
 
@@ -2589,11 +2564,8 @@ void PandemicSim::setup_generateHouseholds()
 	if(DEBUG_SYNCHRONIZE_NEAR_KERNELS)
 		cudaDeviceSynchronize();
 
-	if(TIMING_BATCH_MODE == 0)
-	{
-		int rand_counts_consumed_1 = number_households / 4;
-		rand_offset += rand_counts_consumed_1;
-	}
+	int rand_counts_consumed_1 = number_households / 4;
+	rand_offset += rand_counts_consumed_1;
 
 	thrust::device_vector<int> adult_count_exclScan(number_households+1);
 	thrust::device_vector<int> child_count_exclScan(number_households+1);
@@ -2869,7 +2841,7 @@ void PandemicSim::setup_loadSeed()
 	FILE * fSeed = fopen("seed.txt","r");
 	if(fSeed == NULL)
 	{
-		debug_print("failed to open seed file");
+		//debug_print("failed to open seed file");
 		perror("Error opening seed file");
 		exit(1);
 	}
@@ -2892,7 +2864,7 @@ void PandemicSim::setup_loadFourSeeds()
 	FILE * fSeed = fopen("seed.txt","r");
 	if(fSeed == NULL)
 	{
-		debug_print("failed to open seed file");
+		//debug_print("failed to open seed file");
 		perror("Error opening seed file");
 		exit(1);
 	}
@@ -3059,11 +3031,8 @@ void PandemicSim::weekday_generateAfterschoolAndErrandDestinations()
 	kernel_assignWeekdayAfterschoolAndErrands<<<blocks,threads>>>
 		(people_ages_ptr, number_people, number_workplaces, people_errands_doubleBuffer.Current(), errand_people_doubleBuffer.Current(), rand_offset);
 
-	if(TIMING_BATCH_MODE == 0)
-	{
-		const int rand_counts_consumed = number_people / 2;
-		rand_offset += rand_counts_consumed;
-	}
+	const int rand_counts_consumed = number_people / 2;
+	rand_offset += rand_counts_consumed;
 
 	if(SIM_PROFILING)
 		profiler.endFunction(current_day,number_people);
@@ -3819,13 +3788,10 @@ void PandemicSim::setup_assignWorkplaces()
 	thrust::counting_iterator<int> count_it(0);
 	thrust::for_each_n(thrust::device,count_it,(number_people/4)+1,wp_functor);
 
-	if(TIMING_BATCH_MODE == 0)
-	{
-		const int rand_counts_consumed_2 = number_people / 4;
-		rand_offset += rand_counts_consumed_2;
-	}
+	const int rand_counts_consumed_2 = number_people / 4;
+	rand_offset += rand_counts_consumed_2;
 
-	//IDEA: we want the sorted people IDs to end up in workplace_people, so we will write them into the errand
+	//we want the sorted people IDs to end up in workplace_people, so we will write them into the errand
 	//array and then set the output buffer as workplace_people
 
 	errand_people_doubleBuffer.selector = 0;
